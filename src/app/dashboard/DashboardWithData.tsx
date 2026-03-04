@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { FiltersSidebar, getDefaultFilters, type FilterState } from '@/components/FiltersSidebar';
 import { FeedbackList } from './FeedbackList';
 import { FeedbackDetailModal } from './FeedbackDetailModal';
-import { NewFeedbackModal } from './NewFeedbackModal';
 import { format } from 'date-fns';
 
 type Tag = { id: string; name: string; slug: string };
@@ -33,7 +32,6 @@ export function DashboardWithData({
 }) {
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [newFeedbackOpen, setNewFeedbackOpen] = useState(false);
   const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false);
   const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>(initialFeedback);
 
@@ -65,11 +63,6 @@ export function DashboardWithData({
   }, [feedbackList, filters, initialCustomers]);
 
   const selected = selectedId ? feedbackList.find((f) => f.id === selectedId) : null;
-
-  function handleFeedbackCreated(item: FeedbackItem) {
-    setFeedbackList((prev) => [item, ...prev]);
-    setNewFeedbackOpen(false);
-  }
 
   function handleFeedbackUpdated(updated: FeedbackItem) {
     setFeedbackList((prev) =>
@@ -153,13 +146,6 @@ export function DashboardWithData({
                 Customer Feedback
               </h1>
             </div>
-            <button
-              type="button"
-              onClick={() => setNewFeedbackOpen(true)}
-              className="shrink-0 px-4 py-2.5 rounded-lg bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary-hover)] flex items-center gap-2 shadow-sm transition-colors text-sm sm:text-base"
-            >
-              <span className="text-lg leading-none">+</span> New Feedback
-            </button>
           </header>
           <div className="flex-1 overflow-auto p-4 sm:p-6 min-w-0">
             <div className="bg-white rounded-xl border border-slate-200 shadow-[var(--shadow-sm)] overflow-hidden min-h-[280px]">
@@ -183,14 +169,6 @@ export function DashboardWithData({
           customers={initialCustomers}
           onClose={() => setSelectedId(null)}
           onUpdate={handleFeedbackUpdated}
-        />
-      )}
-      {newFeedbackOpen && (
-        <NewFeedbackModal
-          tags={initialTags}
-          customers={initialCustomers}
-          onClose={() => setNewFeedbackOpen(false)}
-          onCreated={handleFeedbackCreated}
         />
       )}
     </>
