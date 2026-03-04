@@ -29,14 +29,28 @@ function extractCustomerFromSubject(subject: string | null): string | null {
   return null;
 }
 
-async function runOCR(buffer: Buffer, contentType: string): Promise<string | null> {
+interface OCRWorker {
+  recognize(image: Buffer): Promise<{ data?: { text?: string } }>;
+  terminate(): Promise<void>;
+}
+
+async function createOCRWorker(): Promise<OCRWorker> {
+  const Tesseract = (await import('tesseract.js')).default;
+  return Tesseract.createWorker('eng', 1, {}) as Promise<OCRWorker>;
+}
+
+async function runOCR(
+  worker: OCRWorker,
+  buffer: Buffer,
+  contentType: string
+): Promise<string | null> {
   const isImage = contentType.startsWith('image/');
-  if (!isImage) return null;
+  if (!isImage || !buffer?.length) return null;
   try {
-    const Tesseract = (await import('tesseract.js')).default;
-    const { data } = await Tesseract.recognize(buffer, 'eng');
+    const { data } = await worker.recognize(buffer);
     return data?.text?.trim() || null;
-  } catch {
+  } catch (e) {
+    console.error('OCR error:', e instanceof Error ? e.message : e);
     return null;
   }
 }
@@ -73,24 +87,50 @@ async function getReceivedEmail(apiKey: string, emailId: string) {
   throw new Error(lastBody || `Resend API ${lastStatus}`);
 }
 
-async function listReceivedAttachments(apiKey: string, emailId: string) {
-  const res = await fetch(
-    `${RESEND_API_BASE}/emails/receiving/${emailId}/attachments`,
-    { headers: { Authorization: `Bearer ${apiKey}` } }
-  );
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || `Resend attachments API ${res.status}`);
+async function fetchAttachmentBuffer(
+  downloadUrl: string,
+  apiKey: string
+): Promise<Buffer | null> {
+  try {
+    const res = await fetch(downloadUrl, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
   }
-  const data = (await res.json()) as {
-    data?: Array<{
-      id: string;
-      filename?: string;
-      content_type?: string;
-      download_url?: string;
-    }>;
-  };
-  return data.data ?? [];
+}
+
+async function listReceivedAttachments(apiKey: string, emailId: string) {
+  const maxAttempts = 3;
+  const delayMs = 2000;
+  let lastErr = '';
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(
+      `${RESEND_API_BASE}/emails/receiving/${emailId}/attachments`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+    const body = await res.text();
+    if (res.ok) {
+      const data = JSON.parse(body) as {
+        data?: Array<{
+          id: string;
+          filename?: string;
+          content_type?: string;
+          download_url?: string;
+        }>;
+      };
+      return data.data ?? [];
+    }
+    lastErr = body || `Resend attachments API ${res.status}`;
+    const retryable = res.status === 404 || (res.status >= 500 && res.status < 600);
+    if (!retryable || attempt === maxAttempts) {
+      throw new Error(lastErr);
+    }
+    await sleep(delayMs * attempt);
+  }
+  throw new Error(lastErr || 'Resend attachments API failed');
 }
 
 export async function POST(request: NextRequest) {
@@ -163,26 +203,24 @@ export async function POST(request: NextRequest) {
   const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
 
   // A01.4: Accept email with only screenshots (no body) – build body from OCR
+  let ocrWorker: OCRWorker | null = null;
   if (!bodyText && attachments.length > 0) {
+    ocrWorker = await createOCRWorker();
     const ocrParts: string[] = [];
     for (const att of attachments) {
       if (!att.download_url) continue;
-      let buffer: Buffer;
-      try {
-        const res = await fetch(att.download_url);
-        if (!res.ok) continue;
-        buffer = Buffer.from(await res.arrayBuffer());
-      } catch {
-        continue;
-      }
+      const buffer = await fetchAttachmentBuffer(att.download_url, apiKey);
+      if (!buffer?.length) continue;
       const contentType = (att.content_type || 'application/octet-stream').toLowerCase();
       if (imageTypes.some((t) => contentType.startsWith(t))) {
-        const extracted = await runOCR(buffer, contentType);
+        const extracted = await runOCR(ocrWorker, buffer, contentType);
         if (extracted) {
           ocrParts.push(`[From screenshot: ${att.filename ?? 'image'}]\n${extracted}`);
         }
       }
     }
+    await ocrWorker.terminate();
+    ocrWorker = null;
     bodyText = ocrParts.length > 0
       ? ocrParts.join('\n\n')
       : '(Feedback received with attachments; no text could be extracted from images.)';
@@ -262,16 +300,16 @@ export async function POST(request: NextRequest) {
   let appendedBody = bodyText;
   const initialBodyFromEmail = (email.text || stripHtml(email.html || '')).trim();
 
+  const hasImageAttachments = attachments.some((att) => {
+    const ct = (att.content_type || '').toLowerCase();
+    return imageTypes.some((t) => ct.startsWith(t));
+  });
+  const attachmentOcrWorker = hasImageAttachments ? await createOCRWorker() : null;
+
   for (const att of attachments) {
     if (!att.download_url) continue;
-    let buffer: Buffer;
-    try {
-      const res = await fetch(att.download_url);
-      if (!res.ok) continue;
-      buffer = Buffer.from(await res.arrayBuffer());
-    } catch {
-      continue;
-    }
+    const buffer = await fetchAttachmentBuffer(att.download_url, apiKey);
+    if (!buffer?.length) continue;
 
     const contentType = (att.content_type || 'application/octet-stream').toLowerCase();
     const ext = att.filename?.split('.').pop() || (contentType.includes('png') ? 'png' : 'jpg');
@@ -287,8 +325,8 @@ export async function POST(request: NextRequest) {
     if (uploadErr) continue;
 
     let extractedText: string | null = null;
-    if (imageTypes.some((t) => contentType.startsWith(t))) {
-      extractedText = await runOCR(buffer, contentType);
+    if (attachmentOcrWorker && imageTypes.some((t) => contentType.startsWith(t))) {
+      extractedText = await runOCR(attachmentOcrWorker, buffer, contentType);
       if (extractedText && initialBodyFromEmail) {
         appendedBody += `\n\n[From screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
       }
@@ -300,6 +338,8 @@ export async function POST(request: NextRequest) {
       extracted_text: extractedText,
     });
   }
+
+  if (attachmentOcrWorker) await attachmentOcrWorker.terminate();
 
   if (appendedBody !== bodyText) {
     await supabase
