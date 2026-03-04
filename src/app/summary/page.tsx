@@ -15,12 +15,23 @@ export default async function SummaryPage() {
   const orgId = memberships?.[0]?.organization_id;
   if (!orgId) redirect('/login');
 
-  const [customersRes, tagsRes] = await Promise.all([
+  const [customersRes, tagsRes, feedbackRes] = await Promise.all([
     supabase.from('customers').select('id, email, display_name').eq('organization_id', orgId).order('email'),
     supabase.from('tags').select('id, name, slug').order('slug'),
+    supabase.from('feedback').select('customer_email').eq('organization_id', orgId),
   ]);
-  const customers = customersRes.data ?? [];
+  const customersFromTable = customersRes.data ?? [];
   const tags = tagsRes.data ?? [];
+  const feedbackData = feedbackRes.data ?? [];
+  const existingEmails = new Set((customersFromTable as { email?: string }[]).map((c) => c.email?.toLowerCase()));
+  const mergedCustomers = [...customersFromTable];
+  feedbackData.forEach((f: { customer_email?: string | null }) => {
+    const email = f.customer_email?.trim();
+    if (!email || existingEmails.has(email.toLowerCase())) return;
+    mergedCustomers.push({ id: `email:${email}`, email, display_name: null });
+    existingEmails.add(email.toLowerCase());
+  });
+  mergedCustomers.sort((a, b) => (a.email ?? '').localeCompare(b.email ?? ''));
 
   const now = new Date();
   const weekAgo = new Date(now);
@@ -37,7 +48,7 @@ export default async function SummaryPage() {
 
   return (
     <SummaryClient
-      initialCustomers={customers}
+      initialCustomers={mergedCustomers}
       initialTags={tags}
       defaultFilters={defaultFilters}
     />

@@ -29,15 +29,31 @@ export default async function DashboardPage() {
       .limit(200),
   ]);
 
-  const customers = customersRes.data ?? [];
+  const customersFromTable = customersRes.data ?? [];
   const tags = tagsRes.data ?? [];
-  const feedbackRows: FeedbackItem[] = (feedbackRes.data ?? []).map((f: any) => ({
+  const feedbackData = feedbackRes.data ?? [];
+  const feedbackRows: FeedbackItem[] = feedbackData.map((f: any) => ({
     ...f,
     tags:
       (f.feedback_tags as { tags: { id: string; name: string; slug: string } }[] | null)
         ?.map((ft) => ft.tags)
         .filter(Boolean) ?? [],
   }));
+
+  // Include customer emails that appear in feedback but may not be in customers table yet
+  const existingEmails = new Set((customersFromTable as { email?: string }[]).map((c) => c.email?.toLowerCase()));
+  const mergedCustomers = [...customersFromTable];
+  feedbackData.forEach((f: { customer_email?: string | null }) => {
+    const email = f.customer_email?.trim();
+    if (!email || existingEmails.has(email.toLowerCase())) return;
+    mergedCustomers.push({
+      id: `email:${email}`,
+      email,
+      display_name: null,
+    });
+    existingEmails.add(email.toLowerCase());
+  });
+  mergedCustomers.sort((a, b) => (a.email ?? '').localeCompare(b.email ?? ''));
 
   const now = new Date();
   const weekAgo = new Date(now);
@@ -54,7 +70,7 @@ export default async function DashboardPage() {
 
   return (
     <DashboardWithData
-      initialCustomers={customers}
+      initialCustomers={mergedCustomers}
       initialTags={tags}
       initialFeedback={feedbackRows}
       defaultFilters={defaultFilters}

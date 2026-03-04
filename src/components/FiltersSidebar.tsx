@@ -84,28 +84,29 @@ export function FiltersSidebar({
     : tags;
 
   const inputClass =
-    'w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
+    'w-full min-w-0 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500';
 
   return (
     <div
       className={
         embedded
           ? 'w-full p-1 space-y-6'
-          : 'w-72 shrink-0 border-r border-slate-200 bg-white p-5 space-y-6 shadow-[var(--shadow-sm)]'
+          : 'w-[22rem] min-w-[22rem] shrink-0 border-r border-slate-200 bg-white shadow-[var(--shadow-sm)] flex flex-col min-h-0 overflow-y-auto'
       }
     >
+      <div className="p-5 space-y-7 flex-1">
       <div>
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
           Date range
         </label>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-col gap-2">
           <input
             type="date"
             value={filters.dateFrom}
             onChange={(e) => update({ dateFrom: e.target.value })}
             className={inputClass}
           />
-          <span className="text-slate-400 shrink-0">–</span>
+          <span className="text-slate-400 text-xs">to</span>
           <input
             type="date"
             value={filters.dateTo}
@@ -143,7 +144,7 @@ export function FiltersSidebar({
           className={`${inputClass} mb-3`}
         />
         <div className="flex flex-wrap gap-2">
-          {filteredTags.slice(0, 12).map((t) => (
+          {filteredTags.slice(0, 24).map((t) => (
             <button
               key={t.id}
               type="button"
@@ -195,6 +196,7 @@ export function FiltersSidebar({
             </button>
           ))}
         </div>
+      </div>
       </div>
     </div>
   );
