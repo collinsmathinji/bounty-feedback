@@ -1,6 +1,6 @@
 # Customer Feedback Dashboard
 
-A centralized dashboard to collect, tag, filter, and summarize customer feedback—built with **Next.js** and **Supabase**. Access is restricted to `@vamo.app` users; team admins can invite other members to the organization.
+A centralized dashboard to collect, tag, filter, and summarize customer feedback—built with **Next.js** and **Supabase**. Access is restricted to `@vamo.app` users.
 
 ## Features
 
@@ -8,7 +8,6 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
 - **Auto-tagging**: Feedback is tagged by topic (UI, Bug, Search Bar, Search Results, Filter, Sequences, Inbox, Integrations) and sentiment (Positive/Negative). Tags can be edited in the dashboard.
 - **Filtering**: Filter by customer, one or more tags, date range, status, and urgency score (1–5). All filters can be combined.
 - **Summaries**: Generate feedback summaries for a date range and filters. Top requested actions are prioritized by mention count; export to PDF or CSV.
-- **Team settings**: Admins can invite other `@vamo.app` users to the organization with Admin or Member role.
 
 ## Tech stack
 
@@ -44,7 +43,6 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
    All emails are sent through **Resend** only (no other provider or hook).
 
    - **Verification emails** (signup, password reset) so they appear in Resend’s **Sending** tab: In Supabase go to **Authentication → SMTP**. Enable **Custom SMTP** and set **Host** `smtp.resend.com`, **Port** `465`, **Username** `resend`, **Password** to your Resend API key (`RESEND_API_KEY`), and **Sender** to a verified Resend address (e.g. `noreply@yourdomain.com`). Save. Supabase will send all auth emails (signup confirmation, password reset) through Resend, and they will show under **Resend Dashboard → Emails / Sending**.
-   - **Team invitation emails:** When an admin invites a member (Team page), the invite email is sent via Resend using `RESEND_API_KEY` and the same from address (`RESEND_AUTH_FROM` or `RESEND_FROM`). These also appear in Resend’s **Sending** tab.
    - **Inbound feedback:** Uses Resend inbound + webhook (see "Email ingestion with Resend" below).
 
    Enable **Confirm email** under **Auth → Providers → Email** if you want users to verify before signing in.

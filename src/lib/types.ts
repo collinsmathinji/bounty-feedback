@@ -55,17 +55,6 @@ export interface OrganizationMember {
   full_name?: string;
 }
 
-export interface Invite {
-  id: string;
-  organization_id: string;
-  email: string;
-  role: 'admin' | 'member';
-  token: string;
-  expires_at: string;
-  invited_by: string | null;
-  created_at: string;
-}
-
 export const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = {
   new: 'New',
   planned: 'Planned',

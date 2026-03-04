@@ -43,9 +43,5 @@ export async function updateSession(request: NextRequest) {
   if (!isAuthPage && !user && request.nextUrl.pathname.startsWith('/summary')) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
-  if (!isAuthPage && !user && request.nextUrl.pathname.startsWith('/team')) {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
-
   return response;
 }

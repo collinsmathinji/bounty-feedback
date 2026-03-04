@@ -9,7 +9,6 @@ import { useRouter } from 'next/navigation';
 const nav = [
   { href: '/dashboard', label: 'Feedback' },
   { href: '/summary', label: 'Feedback Summary' },
-  { href: '/team', label: 'Team Settings' },
 ];
 
 export default function DashboardLayout({

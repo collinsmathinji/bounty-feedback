@@ -35,19 +35,6 @@ CREATE TABLE organization_members (
   UNIQUE(organization_id, user_id)
 );
 
--- Pending invites (email not yet signed up)
-CREATE TABLE invites (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  email text NOT NULL,
-  role text NOT NULL CHECK (role IN ('admin', 'member')),
-  token text NOT NULL UNIQUE,
-  expires_at timestamptz NOT NULL,
-  invited_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(organization_id, email)
-);
-
 -- Tags (global list; org-scoped if you want per-org tags later)
 CREATE TABLE tags (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -138,7 +125,6 @@ $$;
 
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organization_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
@@ -186,21 +172,6 @@ CREATE POLICY org_members_insert ON organization_members
   );
 CREATE POLICY org_members_update ON organization_members
   FOR UPDATE USING (organization_id IN (SELECT user_organization_ids()));
-
--- Invites: members can read; admins can manage
-CREATE POLICY invites_select ON invites
-  FOR SELECT USING (organization_id IN (SELECT user_organization_ids()));
-CREATE POLICY invites_insert ON invites
-  FOR INSERT WITH CHECK (
-    organization_id IN (SELECT user_organization_ids())
-    AND is_vamo_user()
-    AND is_org_admin(organization_id)
-  );
-CREATE POLICY invites_delete ON invites
-  FOR DELETE USING (
-    organization_id IN (SELECT user_organization_ids())
-    AND is_org_admin(organization_id)
-  );
 
 -- Tags: read-only for all (global list)
 CREATE POLICY tags_select ON tags FOR SELECT USING (true);
