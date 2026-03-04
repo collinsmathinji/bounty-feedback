@@ -70,7 +70,7 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
 
    Open [http://localhost:3000](http://localhost:3000). Sign up with a `@vamo.app` email to create your org and start adding feedback.
 
-## Email ingestion with Resend
+## Email ingestion with use of Resend
 
 Inbound emails are ingested via **Resend** (API key + webhook). When an email is received at your Resend inbound address, the webhook creates a feedback entry and processes attachments (OCR for images).
 
