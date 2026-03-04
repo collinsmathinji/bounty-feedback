@@ -20,6 +20,15 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+/** Remove email-client image placeholders like [image: (uuid).png] or [image: filename] so body_text shows real content + OCR. */
+function stripImagePlaceholders(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\[image:\s*[^\]]*\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extractCustomerFromSubject(subject: string | null): string | null {
   if (!subject?.trim()) return null;
   const trimmed = subject.trim();
@@ -188,7 +197,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let bodyText = (email.text || stripHtml(email.html || '')).trim();
+  const rawEmailBody = (email.text || stripHtml(email.html || '')).trim();
+  let bodyText = stripImagePlaceholders(rawEmailBody);
 
   const customerEmail = extractCustomerFromSubject(email.subject ?? null);
   const subject = (email.subject ?? '').trim() || null;
@@ -215,7 +225,7 @@ export async function POST(request: NextRequest) {
       if (imageTypes.some((t) => contentType.startsWith(t))) {
         const extracted = await runOCR(ocrWorker, buffer, contentType);
         if (extracted) {
-          ocrParts.push(`[From screenshot: ${att.filename ?? 'image'}]\n${extracted}`);
+          ocrParts.push(`[Screenshot: ${att.filename ?? 'image'}]\n${extracted}`);
         }
       }
     }
@@ -298,7 +308,6 @@ export async function POST(request: NextRequest) {
   }
 
   let appendedBody = bodyText;
-  const initialBodyFromEmail = (email.text || stripHtml(email.html || '')).trim();
 
   const hasImageAttachments = attachments.some((att) => {
     const ct = (att.content_type || '').toLowerCase();
@@ -327,8 +336,8 @@ export async function POST(request: NextRequest) {
     let extractedText: string | null = null;
     if (attachmentOcrWorker && imageTypes.some((t) => contentType.startsWith(t))) {
       extractedText = await runOCR(attachmentOcrWorker, buffer, contentType);
-      if (extractedText && initialBodyFromEmail) {
-        appendedBody += `\n\n[From screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
+      if (extractedText) {
+        appendedBody += `\n\n[Screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
       }
     }
 
