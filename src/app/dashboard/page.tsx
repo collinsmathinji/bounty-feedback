@@ -1,22 +1,19 @@
 import { createClient } from '@/lib/supabase/server';
+import { ensureUserOrganization } from '@/app/actions/auth';
 import { DashboardWithData, type FeedbackItem } from './DashboardWithData';
-import { getDefaultFilters } from '@/components/FiltersSidebar';
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: memberships } = await supabase
-    .from('organization_members')
-    .select('organization_id')
-    .eq('status', 'active')
-    .limit(1);
-  const orgId = memberships?.[0]?.organization_id;
-  if (!orgId) {
+  const result = await ensureUserOrganization();
+  if ('error' in result) {
     return (
       <div className="p-6">
-        <p className="text-slate-600">No organization found. Please sign out and sign in again.</p>
+        <p className="text-slate-600">No organization found. {result.error}</p>
+        <p className="mt-2 text-sm text-slate-500">Try signing out and signing in again.</p>
       </div>
     );
   }
+  const orgId = result.organizationId;
+  const supabase = await createClient();
 
   const [customersRes, tagsRes, feedbackRes] = await Promise.all([
     supabase.from('customers').select('id, email, display_name').eq('organization_id', orgId).order('email'),
@@ -42,8 +39,18 @@ export default async function DashboardPage() {
         .filter(Boolean) ?? [],
   }));
 
-  const defaultFilters = getDefaultFilters();
-  defaultFilters.status = 'new';
+  const now = new Date();
+  const weekAgo = new Date(now);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const defaultFilters = {
+    dateFrom: weekAgo.toISOString().slice(0, 10),
+    dateTo: now.toISOString().slice(0, 10),
+    customerId: '',
+    tagIds: [] as string[],
+    status: 'new',
+    urgencyScores: [] as number[],
+    tagSearch: '',
+  };
 
   return (
     <DashboardWithData

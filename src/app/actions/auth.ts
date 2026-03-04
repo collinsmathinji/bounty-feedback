@@ -1,19 +1,28 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+const VAMO_DOMAIN = '@vamo.app';
 
 /**
- * Ensure the current user has a profile and an organization (create org and add themselves as admin if not).
- * Call this after auth on dashboard load.
+ * Ensure the current user has a profile and is a member of the single Vamo organization.
+ * Only @vamo.app emails are allowed; signup is restricted to that domain and this grants access to the one org.
  */
 export async function ensureUserOrganization(): Promise<{ organizationId: string } | { error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.email?.endsWith('@vamo.app')) {
-    return { error: 'Access restricted to @vamo.app' };
+  if (!user) {
+    return { error: 'User not found' };
+  }
+  if (!user.email?.toLowerCase().endsWith(VAMO_DOMAIN)) {
+    return { error: `Access restricted to ${VAMO_DOMAIN} addresses only.` };
   }
 
-  await supabase.from('profiles').upsert(
+  const admin = createAdminClient();
+
+  // Keep profile in sync (admin so it always succeeds regardless of RLS)
+  await admin.from('profiles').upsert(
     {
       id: user.id,
       email: user.email,
@@ -23,57 +32,58 @@ export async function ensureUserOrganization(): Promise<{ organizationId: string
     { onConflict: 'id' }
   );
 
-  const { data: existing } = await supabase
+  // Resolve the single shared organization:
+  // 1) Prefer an explicit ID from env (if you set RESEND_FEEDBACK_ORGANIZATION_ID)
+  // 2) Otherwise, use the "Vamo" organization (create it once if missing)
+  let organizationId = process.env.RESEND_FEEDBACK_ORGANIZATION_ID ?? null;
+
+  if (!organizationId) {
+    const { data: existingOrg } = await admin
+      .from('organizations')
+      .select('id')
+      .eq('name', 'Vamo')
+      .limit(1)
+      .single();
+
+    if (existingOrg?.id) {
+      organizationId = existingOrg.id;
+    } else {
+      const { data: newOrg, error: orgErr } = await admin
+        .from('organizations')
+        .insert({ name: 'Vamo' })
+        .select('id')
+        .single();
+
+      if (orgErr || !newOrg) {
+        return { error: orgErr?.message ?? 'Failed to create organization' };
+      }
+
+      organizationId = newOrg.id;
+    }
+  }
+
+  // Ensure this user is an active member of the Vamo organization (admin bypasses RLS)
+  const { data: existingMember } = await admin
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user.id)
+    .eq('organization_id', organizationId)
     .eq('status', 'active')
     .limit(1)
     .single();
 
-  if (existing?.organization_id) {
-    return { organizationId: existing.organization_id };
-  }
-
-  const { data: invite } = await supabase
-    .from('invites')
-    .select('organization_id, role')
-    .eq('email', user.email?.toLowerCase())
-    .gte('expires_at', new Date().toISOString())
-    .limit(1)
-    .single();
-
-  if (invite?.organization_id) {
-    await supabase.from('organization_members').insert({
-      organization_id: invite.organization_id,
+  if (!existingMember?.organization_id) {
+    const { error: memberErr } = await admin.from('organization_members').insert({
+      organization_id: organizationId,
       user_id: user.id,
-      role: invite.role,
+      role: 'admin',
       status: 'active',
     });
-    await supabase.from('invites').delete().eq('email', user.email!);
-    return { organizationId: invite.organization_id };
+
+    if (memberErr) {
+      return { error: memberErr.message };
+    }
   }
 
-  const { data: newOrg, error: orgErr } = await supabase
-    .from('organizations')
-    .insert({ name: 'Vamo' })
-    .select('id')
-    .single();
-
-  if (orgErr || !newOrg) {
-    return { error: orgErr?.message ?? 'Failed to create organization' };
-  }
-
-  const { error: memberErr } = await supabase.from('organization_members').insert({
-    organization_id: newOrg.id,
-    user_id: user.id,
-    role: 'admin',
-    status: 'active',
-  });
-
-  if (memberErr) {
-    return { error: memberErr.message };
-  }
-
-  return { organizationId: newOrg.id };
+  return { organizationId };
 }

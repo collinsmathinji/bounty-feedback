@@ -11,9 +11,11 @@ export default async function DashboardRootLayout({
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
+  if (!user.email?.toLowerCase().endsWith('@vamo.app')) {
+    redirect('/login?error=vamo-only');
+  }
 
-  const result = await ensureUserOrganization();
-  if ('error' in result) redirect('/login');
+  await ensureUserOrganization();
 
   return <DashboardLayout>{children}</DashboardLayout>;
 }

@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { SummaryClient } from './SummaryClient';
-import { getDefaultFilters } from '@/components/FiltersSidebar';
 
 export default async function SummaryPage() {
   const supabase = await createClient();
@@ -22,7 +21,19 @@ export default async function SummaryPage() {
   ]);
   const customers = customersRes.data ?? [];
   const tags = tagsRes.data ?? [];
-  const defaultFilters = getDefaultFilters();
+
+  const now = new Date();
+  const weekAgo = new Date(now);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const defaultFilters = {
+    dateFrom: weekAgo.toISOString().slice(0, 10),
+    dateTo: now.toISOString().slice(0, 10),
+    customerId: '',
+    tagIds: [] as string[],
+    status: 'new',
+    urgencyScores: [] as number[],
+    tagSearch: '',
+  };
 
   return (
     <SummaryClient

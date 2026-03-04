@@ -43,7 +43,7 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
 
    All emails are sent through **Resend** only (no other provider or hook).
 
-   - **Verification emails** (signup, password reset): In Supabase go to **Authentication → SMTP**. Enable custom SMTP and set **Host** `smtp.resend.com`, **Port** `465`, **Username** `resend`, **Password** your Resend API key (`RESEND_API_KEY`), and **Sender** a verified address (e.g. `noreply@yourdomain.com`). Supabase then sends all auth emails via Resend.
+   - **Verification emails** (signup, password reset): In Supabase go to **Authentication → SMTP**. Enable custom SMTP and set **Host** `smtp.resend.com`, **Port** `465`, **Username** `resend`, **Password** your Resend API key (`RESEND_API_KEY`), and **Sender** a verified address (e.g. `noreply@farmtrackai.com`). Supabase then sends all auth emails via Resend.
    - **Inbound feedback:** Uses Resend inbound + webhook (see "Email ingestion with Resend" below).
 
    Enable **Confirm email** under **Auth → Providers → Email** if you want users to verify before signing in.
@@ -74,7 +74,7 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
 
 Inbound emails are ingested via **Resend** (API key + webhook). When an email is received at your Resend inbound address, the webhook creates a feedback entry and processes attachments (OCR for images).
 
-1. **Resend setup**: Sign up at [resend.com](https://resend.com), add an **inbound domain**, create an **API key** (`RESEND_API_KEY`), and in **Webhooks** create a webhook with URL `https://your-app-url.com/api/webhooks/resend` and event **email.received**. Copy the **Signing secret** as `RESEND_WEBHOOK_SECRET`.
+1. **Resend setup**: Sign up at [resend.com](https://resend.com), add an **inbound domain** (e.g. `feedback.farmtrackai.com` or use Resend’s default `*.resend.app`), create an **API key** (`RESEND_API_KEY`), and in **Webhooks** create a webhook with URL `https://farmtrackai.com/api/webhooks/resend` (or your app host) and event **email.received**. Copy the **Signing secret** as `RESEND_WEBHOOK_SECRET`.
 2. **Env**: Also set `SUPABASE_SERVICE_ROLE_KEY`. Optional: `RESEND_FEEDBACK_ORGANIZATION_ID` (org UUID for inbound feedback).
 3. **Behaviour**: Subject is parsed for a customer email (or feedback is Unassigned). Body becomes feedback text (auto-tagged). Image attachments are uploaded and OCR'd; text is appended to the feedback.
 
