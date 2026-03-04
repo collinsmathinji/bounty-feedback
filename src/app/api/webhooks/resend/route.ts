@@ -31,12 +31,12 @@ function extractCustomerFromSubject(subject: string | null): string | null {
 
 interface OCRWorker {
   recognize(image: Buffer): Promise<{ data?: { text?: string } }>;
-  terminate(): Promise<void>;
+  terminate(): Promise<unknown>;
 }
 
 async function createOCRWorker(): Promise<OCRWorker> {
   const Tesseract = (await import('tesseract.js')).default;
-  return Tesseract.createWorker('eng', 1, {}) as Promise<OCRWorker>;
+  return Tesseract.createWorker('eng', 1, {});
 }
 
 async function runOCR(
