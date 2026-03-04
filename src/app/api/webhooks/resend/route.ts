@@ -127,13 +127,52 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch email' }, { status: 502 });
   }
 
-  const bodyText = (email.text || stripHtml(email.html || '')).trim();
-  if (!bodyText) {
-    return NextResponse.json({ error: 'Email has no text content' }, { status: 400 });
-  }
+  let bodyText = (email.text || stripHtml(email.html || '')).trim();
 
   const customerEmail = extractCustomerFromSubject(email.subject ?? null);
   const subject = (email.subject ?? '').trim() || null;
+
+  let attachments: Array<{ id: string; filename?: string; content_type?: string; download_url?: string }> = [];
+  try {
+    attachments = await listReceivedAttachments(apiKey, emailId);
+  } catch (e) {
+    console.error('Resend list attachments error:', e);
+  }
+
+  const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+
+  // A01.4: Accept email with only screenshots (no body) – build body from OCR
+  if (!bodyText && attachments.length > 0) {
+    const ocrParts: string[] = [];
+    for (const att of attachments) {
+      if (!att.download_url) continue;
+      let buffer: Buffer;
+      try {
+        const res = await fetch(att.download_url);
+        if (!res.ok) continue;
+        buffer = Buffer.from(await res.arrayBuffer());
+      } catch {
+        continue;
+      }
+      const contentType = (att.content_type || 'application/octet-stream').toLowerCase();
+      if (imageTypes.some((t) => contentType.startsWith(t))) {
+        const extracted = await runOCR(buffer, contentType);
+        if (extracted) {
+          ocrParts.push(`[From screenshot: ${att.filename ?? 'image'}]\n${extracted}`);
+        }
+      }
+    }
+    bodyText = ocrParts.length > 0
+      ? ocrParts.join('\n\n')
+      : '(Feedback received with attachments; no text could be extracted from images.)';
+  }
+
+  if (!bodyText) {
+    return NextResponse.json(
+      { error: 'Email has no text content or image attachments to extract text from' },
+      { status: 400 }
+    );
+  }
 
   const supabase = createAdminClient();
   let orgId = process.env.RESEND_FEEDBACK_ORGANIZATION_ID ?? null;
@@ -200,14 +239,7 @@ export async function POST(request: NextRequest) {
   }
 
   let appendedBody = bodyText;
-  let attachments: Array<{ id: string; filename?: string; content_type?: string; download_url?: string }> = [];
-  try {
-    attachments = await listReceivedAttachments(apiKey, emailId);
-  } catch (e) {
-    console.error('Resend list attachments error:', e);
-  }
-
-  const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+  const initialBodyFromEmail = (email.text || stripHtml(email.html || '')).trim();
 
   for (const att of attachments) {
     if (!att.download_url) continue;
@@ -236,7 +268,9 @@ export async function POST(request: NextRequest) {
     let extractedText: string | null = null;
     if (imageTypes.some((t) => contentType.startsWith(t))) {
       extractedText = await runOCR(buffer, contentType);
-      if (extractedText) appendedBody += `\n\n[From screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
+      if (extractedText && initialBodyFromEmail) {
+        appendedBody += `\n\n[From screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
+      }
     }
 
     await supabase.from('feedback_attachments').insert({

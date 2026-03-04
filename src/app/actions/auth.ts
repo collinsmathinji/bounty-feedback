@@ -85,5 +85,8 @@ export async function ensureUserOrganization(): Promise<{ organizationId: string
     }
   }
 
+  if (!organizationId) {
+    return { error: 'Organization ID could not be resolved' };
+  }
   return { organizationId };
 }
