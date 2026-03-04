@@ -185,32 +185,24 @@ export async function POST(request: NextRequest) {
   }
 
   const emailId = event.data.email_id;
-
-  // Respond immediately so Resend doesn't timeout; OCR and DB work run in background
-  after(async () => {
-    try {
-      await processEmailReceived(emailId);
-    } catch (e) {
-      console.error('Resend webhook background processing error:', { emailId, error: e });
-    }
-  });
-
-  return NextResponse.json({ ok: true, processing: true });
-}
-
-async function processEmailReceived(emailId: string): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    throw new Error('RESEND_API_KEY not set');
+    return NextResponse.json(
+      { error: 'Resend not configured (RESEND_API_KEY)' },
+      { status: 503 }
+    );
   }
 
+  // Do feedback creation in the request so it always completes; only OCR/attachments in background (Vercel kills after 60s)
   let email: { subject?: string | null; text?: string | null; html?: string | null };
   try {
     email = await getReceivedEmail(apiKey, emailId);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('Resend get email error:', { emailId, message: msg });
-    throw e;
+    return NextResponse.json(
+      { error: 'Failed to fetch email', detail: msg },
+      { status: 502 }
+    );
   }
 
   const rawEmailBody = (email.text || stripHtml(email.html || '')).trim();
@@ -226,33 +218,15 @@ async function processEmailReceived(emailId: string): Promise<void> {
     console.error('Resend list attachments error:', e);
   }
 
-  const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
-
-  let ocrWorker: OCRWorker | null = null;
   if (!bodyText && attachments.length > 0) {
-    ocrWorker = await createOCRWorker();
-    const ocrParts: string[] = [];
-    for (const att of attachments) {
-      if (!att.download_url) continue;
-      const buffer = await fetchAttachmentBuffer(att.download_url, apiKey);
-      if (!buffer?.length) continue;
-      const contentType = (att.content_type || 'application/octet-stream').toLowerCase();
-      if (imageTypes.some((t) => contentType.startsWith(t))) {
-        const extracted = await runOCR(ocrWorker, buffer, contentType);
-        if (extracted) {
-          ocrParts.push(`[Screenshot: ${att.filename ?? 'image'}]\n${extracted}`);
-        }
-      }
-    }
-    await ocrWorker.terminate();
-    ocrWorker = null;
-    bodyText = ocrParts.length > 0
-      ? ocrParts.join('\n\n')
-      : '(Feedback received with attachments; no text could be extracted from images.)';
+    bodyText = '(Processing attachments…)';
   }
 
   if (!bodyText) {
-    throw new Error('Email has no text content or image attachments to extract text from');
+    return NextResponse.json(
+      { error: 'Email has no text content or image attachments to extract text from' },
+      { status: 400 }
+    );
   }
 
   const supabase = createAdminClient();
@@ -262,7 +236,10 @@ async function processEmailReceived(emailId: string): Promise<void> {
     orgId = orgs?.[0]?.id ?? null;
   }
   if (!orgId) {
-    throw new Error('No organization (set RESEND_FEEDBACK_ORGANIZATION_ID or create an org)');
+    return NextResponse.json(
+      { error: 'No organization (set RESEND_FEEDBACK_ORGANIZATION_ID or create an org)' },
+      { status: 503 }
+    );
   }
 
   const suggested = suggestTags(bodyText);
@@ -297,7 +274,10 @@ async function processEmailReceived(emailId: string): Promise<void> {
 
   if (feedbackErr || !feedback) {
     console.error('Feedback insert error:', feedbackErr);
-    throw new Error(feedbackErr?.message ?? 'Failed to create feedback');
+    return NextResponse.json(
+      { error: feedbackErr?.message ?? 'Failed to create feedback' },
+      { status: 500 }
+    );
   }
 
   if (customerEmail) {
@@ -313,13 +293,52 @@ async function processEmailReceived(emailId: string): Promise<void> {
     );
   }
 
-  let appendedBody = bodyText;
-
-  const hasImageAttachments = attachments.some((att) => {
-    const ct = (att.content_type || '').toLowerCase();
-    return imageTypes.some((t) => ct.startsWith(t));
+  const feedbackId = feedback.id;
+  after(async () => {
+    try {
+      await processAttachmentsAndOcr(emailId, feedbackId);
+    } catch (e) {
+      console.error('Resend webhook background error:', { emailId, feedbackId, error: e });
+    }
   });
-  const attachmentOcrWorker = hasImageAttachments ? await createOCRWorker() : null;
+
+  return NextResponse.json({
+    ok: true,
+    feedback_id: feedback.id,
+    customer_email: customerEmail,
+    attachments_queued: attachments.length,
+  });
+}
+
+async function processAttachmentsAndOcr(emailId: string, feedbackId: string): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+
+  const supabase = createAdminClient();
+  const { data: row } = await supabase
+    .from('feedback')
+    .select('organization_id, body_text')
+    .eq('id', feedbackId)
+    .single();
+  if (!row) return;
+
+  const orgId = row.organization_id;
+  const initialBody = row.body_text ?? '';
+  let bodyText = initialBody.replace(/^\(Processing attachments…\)\s*$/, '').trim();
+
+  let attachments: Array<{ id: string; filename?: string; content_type?: string; download_url?: string }> = [];
+  try {
+    attachments = await listReceivedAttachments(apiKey, emailId);
+  } catch {
+    return;
+  }
+  if (attachments.length === 0) return;
+
+  const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+  const hasImages = attachments.some((a) =>
+    imageTypes.some((t) => (a.content_type ?? '').toLowerCase().startsWith(t))
+  );
+  const ocrWorker = hasImages ? await createOCRWorker() : null;
 
   for (const att of attachments) {
     if (!att.download_url) continue;
@@ -328,7 +347,7 @@ async function processEmailReceived(emailId: string): Promise<void> {
 
     const contentType = (att.content_type || 'application/octet-stream').toLowerCase();
     const ext = att.filename?.split('.').pop() || (contentType.includes('png') ? 'png' : 'jpg');
-    const storagePath = `${orgId}/${feedback.id}/${Date.now()}-${att.id}.${ext}`;
+    const storagePath = `${orgId}/${feedbackId}/${Date.now()}-${att.id}.${ext}`;
 
     const { error: uploadErr } = await supabase.storage
       .from('attachments')
@@ -336,36 +355,26 @@ async function processEmailReceived(emailId: string): Promise<void> {
         contentType: att.content_type || 'application/octet-stream',
         upsert: false,
       });
-
     if (uploadErr) continue;
 
     let extractedText: string | null = null;
-    if (attachmentOcrWorker && imageTypes.some((t) => contentType.startsWith(t))) {
-      extractedText = await runOCR(attachmentOcrWorker, buffer, contentType);
+    if (ocrWorker && imageTypes.some((t) => contentType.startsWith(t))) {
+      extractedText = await runOCR(ocrWorker, buffer, contentType);
       if (extractedText) {
-        appendedBody += `\n\n[Screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
+        bodyText += (bodyText ? '\n\n' : '') + `[Screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
       }
     }
 
     await supabase.from('feedback_attachments').insert({
-      feedback_id: feedback.id,
+      feedback_id: feedbackId,
       storage_path: storagePath,
       extracted_text: extractedText,
     });
   }
 
-  if (attachmentOcrWorker) await attachmentOcrWorker.terminate();
-
-  if (appendedBody !== bodyText) {
-    await supabase
-      .from('feedback')
-      .update({ body_text: appendedBody })
-      .eq('id', feedback.id);
+  if (ocrWorker) await ocrWorker.terminate();
+  const finalBody = bodyText || initialBody;
+  if (finalBody !== initialBody) {
+    await supabase.from('feedback').update({ body_text: finalBody }).eq('id', feedbackId);
   }
-
-  console.log('Resend webhook processed:', {
-    feedback_id: feedback.id,
-    customer_email: customerEmail,
-    attachments_processed: attachments.length,
-  });
 }
