@@ -75,27 +75,69 @@ export function SummaryClient({
     URL.revokeObjectURL(url);
   }
 
+  function escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   function exportPDF() {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow || !summary) return;
+    if (!summary) return;
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+    if (!printWindow) {
+      // Popup likely blocked; offer instructions
+      if (typeof window !== 'undefined' && window.isSecureContext) {
+        const printContent = document.createElement('div');
+        printContent.id = 'summary-print-content';
+        printContent.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;padding:2rem;font-family:sans-serif;background:white;';
+        const dateRange = `${filters.dateFrom || '…'} – ${filters.dateTo || '…'}`;
+        printContent.innerHTML = `
+          <h1>Feedback Summary</h1>
+          <p><strong>Date range:</strong> ${escapeHtml(dateRange)}</p>
+          <p><strong>Total feedback:</strong> ${summary.totalFeedback}</p>
+          <h2>Top requested actions</h2>
+          <ul>${summary.topRequestedActions.map((a) => `<li>${escapeHtml(a.text)} (${a.mentions} mentions)</li>`).join('')}</ul>
+          <h2>Other trends</h2>
+          <p>${escapeHtml(summary.otherTrends)}</p>
+          <p style="margin-top:2rem;color:#666;">Generated ${escapeHtml(format(new Date(), 'PPpp'))}</p>
+        `;
+        document.body.appendChild(printContent);
+        window.print();
+        document.body.removeChild(printContent);
+      }
+      return;
+    }
     const dateRange = `${filters.dateFrom || '…'} – ${filters.dateTo || '…'}`;
+    const topActionsHtml = summary.topRequestedActions
+      .map((a) => `<li>${escapeHtml(a.text)} (${a.mentions} mentions)</li>`)
+      .join('');
     printWindow.document.write(`
-      <!DOCTYPE html><html><head><title>Feedback Summary</title></head><body style="font-family:sans-serif;padding:2rem;">
+      <!DOCTYPE html>
+      <html><head><meta charset="utf-8"><title>Feedback Summary</title>
+      <style>body{font-family:system-ui,sans-serif;padding:2rem;max-width:60rem;margin:0 auto;} h1{font-size:1.5rem;} h2{font-size:1.15rem;margin-top:1.5rem;} p,li{line-height:1.5;} .muted{color:#666;margin-top:2rem;font-size:0.875rem;}</style>
+      </head><body>
         <h1>Feedback Summary</h1>
-        <p><strong>Date range:</strong> ${dateRange}</p>
+        <p><strong>Date range:</strong> ${escapeHtml(dateRange)}</p>
         <p><strong>Total feedback:</strong> ${summary.totalFeedback}</p>
         <h2>Top requested actions</h2>
-        <ul>
-          ${summary.topRequestedActions.map((a) => `<li>${a.text} (${a.mentions} mentions)</li>`).join('')}
-        </ul>
+        <ul>${topActionsHtml}</ul>
         <h2>Other trends</h2>
-        <p>${summary.otherTrends}</p>
-        <p style="margin-top:2rem;color:#666;">Generated ${format(new Date(), 'PPpp')}</p>
+        <p>${escapeHtml(summary.otherTrends)}</p>
+        <p class="muted">Generated ${escapeHtml(format(new Date(), 'PPpp'))}. Use the browser menu to Print → Save as PDF, then close this tab.</p>
       </body></html>
     `);
     printWindow.document.close();
-    printWindow.print();
-    printWindow.close();
+    printWindow.focus();
+    // Delay print so the document is fully rendered; window is left open so user can Save as PDF from print dialog
+    setTimeout(() => {
+      try {
+        printWindow.print();
+      } catch {
+        // ignore if window was closed
+      }
+    }, 250);
   }
 
   const dateLabel =
