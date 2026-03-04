@@ -36,9 +36,7 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage =
     request.nextUrl.pathname === '/login' ||
     request.nextUrl.pathname === '/signup';
-  if (isAuthPage && user) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
-  }
+
   if (!isAuthPage && !user && request.nextUrl.pathname.startsWith('/dashboard')) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
