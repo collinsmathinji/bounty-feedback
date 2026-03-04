@@ -14,8 +14,11 @@ function LoginForm() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (searchParams.get('error') === 'vamo-only') {
+    const err = searchParams.get('error');
+    if (err === 'vamo-only') {
       setError('Access restricted to @vamo.app addresses only.');
+    } else if (err === 'session') {
+      setError('We couldn’t add you to the team yet. Please sign in again.');
     }
   }, [searchParams]);
 

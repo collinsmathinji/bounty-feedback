@@ -43,7 +43,8 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
 
    All emails are sent through **Resend** only (no other provider or hook).
 
-   - **Verification emails** (signup, password reset): In Supabase go to **Authentication → SMTP**. Enable custom SMTP and set **Host** `smtp.resend.com`, **Port** `465`, **Username** `resend`, **Password** your Resend API key (`RESEND_API_KEY`), and **Sender** a verified address (e.g. `noreply@farmtrackai.com`). Supabase then sends all auth emails via Resend.
+   - **Verification emails** (signup, password reset) so they appear in Resend’s **Sending** tab: In Supabase go to **Authentication → SMTP**. Enable **Custom SMTP** and set **Host** `smtp.resend.com`, **Port** `465`, **Username** `resend`, **Password** to your Resend API key (`RESEND_API_KEY`), and **Sender** to a verified Resend address (e.g. `noreply@yourdomain.com`). Save. Supabase will send all auth emails (signup confirmation, password reset) through Resend, and they will show under **Resend Dashboard → Emails / Sending**.
+   - **Team invitation emails:** When an admin invites a member (Team page), the invite email is sent via Resend using `RESEND_API_KEY` and the same from address (`RESEND_AUTH_FROM` or `RESEND_FROM`). These also appear in Resend’s **Sending** tab.
    - **Inbound feedback:** Uses Resend inbound + webhook (see "Email ingestion with Resend" below).
 
    Enable **Confirm email** under **Auth → Providers → Email** if you want users to verify before signing in.
@@ -61,6 +62,7 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `RESEND_API_KEY` (for SMTP password in Supabase and for inbound webhook)
+   - **Production only:** `NEXT_PUBLIC_APP_URL` to your app URL (e.g. `https://your-domain.com`) so verification emails link to your site instead of localhost. Add this URL (and `https://your-domain.com/**`) to Supabase **Authentication → URL Configuration → Redirect URLs**.
 
 6. **Run**
 

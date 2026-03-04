@@ -19,7 +19,12 @@ export async function ensureUserOrganization(): Promise<{ organizationId: string
     return { error: `Access restricted to ${VAMO_DOMAIN} addresses only.` };
   }
 
-  const admin = createAdminClient();
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (e) {
+    return { error: 'Server configuration error (missing service role key).' };
+  }
 
   // Keep profile in sync (admin so it always succeeds regardless of RLS)
   await admin.from('profiles').upsert(
@@ -62,27 +67,25 @@ export async function ensureUserOrganization(): Promise<{ organizationId: string
     }
   }
 
-  // Ensure this user is an active member of the Vamo organization (admin bypasses RLS)
-  const { data: existingMember } = await admin
+  // Ensure this user is an active member of the Vamo organization (admin bypasses RLS).
+  // Upsert so we don't fail if they already exist (e.g. pending invite or race).
+  const { error: memberErr } = await admin
     .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .eq('organization_id', organizationId)
-    .eq('status', 'active')
-    .limit(1)
-    .single();
+    .upsert(
+      {
+        organization_id: organizationId,
+        user_id: user.id,
+        role: 'admin',
+        status: 'active',
+      },
+      {
+        onConflict: 'organization_id, user_id',
+        ignoreDuplicates: false,
+      }
+    );
 
-  if (!existingMember?.organization_id) {
-    const { error: memberErr } = await admin.from('organization_members').insert({
-      organization_id: organizationId,
-      user_id: user.id,
-      role: 'admin',
-      status: 'active',
-    });
-
-    if (memberErr) {
-      return { error: memberErr.message };
-    }
+  if (memberErr) {
+    return { error: memberErr.message };
   }
 
   if (!organizationId) {

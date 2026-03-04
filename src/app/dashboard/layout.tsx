@@ -15,7 +15,10 @@ export default async function DashboardRootLayout({
     redirect('/login?error=vamo-only');
   }
 
-  await ensureUserOrganization();
+  const orgResult = await ensureUserOrganization();
+  if ('error' in orgResult) {
+    redirect('/login?error=session');
+  }
 
   return <DashboardLayout>{children}</DashboardLayout>;
 }
