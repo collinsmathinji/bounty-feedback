@@ -51,8 +51,10 @@ export function TeamClient({
       setShowInvite(false);
       setInviteEmail('');
       setInviteRole('member');
-    } else {
+    } else if (!result.success) {
       setError(result.error ?? 'Failed to send invite');
+    } else {
+      setError('Failed to send invite');
     }
   }
 

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { DashboardWithData } from './DashboardWithData';
+import { DashboardWithData, type FeedbackItem } from './DashboardWithData';
 import { getDefaultFilters } from '@/components/FiltersSidebar';
 
 export default async function DashboardPage() {
@@ -34,11 +34,12 @@ export default async function DashboardPage() {
 
   const customers = customersRes.data ?? [];
   const tags = tagsRes.data ?? [];
-  const feedbackRows = (feedbackRes.data ?? []).map((f: Record<string, unknown>) => ({
+  const feedbackRows: FeedbackItem[] = (feedbackRes.data ?? []).map((f: any) => ({
     ...f,
-    tags: (f.feedback_tags as { tags: { id: string; name: string; slug: string } }[] | null)?.map(
-      (ft) => ft.tags
-    ).filter(Boolean) ?? [],
+    tags:
+      (f.feedback_tags as { tags: { id: string; name: string; slug: string } }[] | null)
+        ?.map((ft) => ft.tags)
+        .filter(Boolean) ?? [],
   }));
 
   const defaultFilters = getDefaultFilters();

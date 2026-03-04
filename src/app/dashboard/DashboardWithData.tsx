@@ -9,7 +9,7 @@ import { format } from 'date-fns';
 
 type Tag = { id: string; name: string; slug: string };
 type Customer = { id: string; email: string; display_name: string | null };
-type FeedbackItem = {
+export type FeedbackItem = {
   id: string;
   customer_email: string | null;
   subject: string | null;
