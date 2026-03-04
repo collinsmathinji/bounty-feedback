@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { FEEDBACK_STATUS_LABELS, type FeedbackStatus } from '@/lib/types';
+import {
+  FEEDBACK_PROCESSING_PLACEHOLDER,
+  OCR_FALLBACK_MESSAGE,
+} from '@/lib/constants';
 
 type Tag = { id: string; name: string; slug: string };
 type Customer = { id: string; email: string; display_name: string | null };
@@ -155,7 +159,9 @@ export function FeedbackDetailModal({
               Feedback
             </label>
             <p className="text-slate-700 whitespace-pre-wrap border border-slate-200 rounded-lg p-3 bg-slate-50">
-              {feedback.body_text}
+              {feedback.body_text === FEEDBACK_PROCESSING_PLACEHOLDER
+                ? OCR_FALLBACK_MESSAGE
+                : feedback.body_text}
             </p>
           </div>
           {attachments.length > 0 && (

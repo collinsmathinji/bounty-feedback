@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { suggestTags } from '@/lib/auto-tag';
+import {
+  FEEDBACK_PROCESSING_PLACEHOLDER as PROCESSING_PLACEHOLDER,
+  OCR_FALLBACK_MESSAGE,
+} from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -10,6 +14,9 @@ export const maxDuration = 60;
 const RESEND_API_BASE = 'https://api.resend.com';
 const UNASSIGNED_TAG_SLUG = 'unassigned';
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+
+/** Stop waiting for OCR after this; show image + fallback message. */
+const OCR_TIMEOUT_MS = 45_000;
 
 function stripHtml(html: string): string {
   if (!html) return '';
@@ -219,7 +226,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!bodyText && attachments.length > 0) {
-    bodyText = '(Processing attachments…)';
+    bodyText = PROCESSING_PLACEHOLDER;
   }
 
   if (!bodyText) {
@@ -324,7 +331,8 @@ async function processAttachmentsAndOcr(emailId: string, feedbackId: string): Pr
 
   const orgId = row.organization_id;
   const initialBody = row.body_text ?? '';
-  let bodyText = initialBody.replace(/^\(Processing attachments…\)\s*$/, '').trim();
+  const wasProcessingPlaceholder = initialBody.trim() === PROCESSING_PLACEHOLDER;
+  let bodyText = wasProcessingPlaceholder ? '' : initialBody.trim();
 
   let attachments: Array<{ id: string; filename?: string; content_type?: string; download_url?: string }> = [];
   try {
@@ -340,41 +348,51 @@ async function processAttachmentsAndOcr(emailId: string, feedbackId: string): Pr
   );
   const ocrWorker = hasImages ? await createOCRWorker() : null;
 
-  for (const att of attachments) {
-    if (!att.download_url) continue;
-    const buffer = await fetchAttachmentBuffer(att.download_url, apiKey);
-    if (!buffer?.length) continue;
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+  }, OCR_TIMEOUT_MS);
 
-    const contentType = (att.content_type || 'application/octet-stream').toLowerCase();
-    const ext = att.filename?.split('.').pop() || (contentType.includes('png') ? 'png' : 'jpg');
-    const storagePath = `${orgId}/${feedbackId}/${Date.now()}-${att.id}.${ext}`;
+  try {
+    for (const att of attachments) {
+      if (!att.download_url) continue;
+      const buffer = await fetchAttachmentBuffer(att.download_url, apiKey);
+      if (!buffer?.length) continue;
 
-    const { error: uploadErr } = await supabase.storage
-      .from('attachments')
-      .upload(storagePath, buffer, {
-        contentType: att.content_type || 'application/octet-stream',
-        upsert: false,
-      });
-    if (uploadErr) continue;
+      const contentType = (att.content_type || 'application/octet-stream').toLowerCase();
+      const ext = att.filename?.split('.').pop() || (contentType.includes('png') ? 'png' : 'jpg');
+      const storagePath = `${orgId}/${feedbackId}/${Date.now()}-${att.id}.${ext}`;
 
-    let extractedText: string | null = null;
-    if (ocrWorker && imageTypes.some((t) => contentType.startsWith(t))) {
-      extractedText = await runOCR(ocrWorker, buffer, contentType);
-      if (extractedText) {
-        bodyText += (bodyText ? '\n\n' : '') + `[Screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('attachments')
+        .upload(storagePath, buffer, {
+          contentType: att.content_type || 'application/octet-stream',
+          upsert: false,
+        });
+      if (uploadErr) continue;
+
+      let extractedText: string | null = null;
+      if (!timedOut && ocrWorker && imageTypes.some((t) => contentType.startsWith(t))) {
+        extractedText = await runOCR(ocrWorker, buffer, contentType);
+        if (extractedText) {
+          bodyText += (bodyText ? '\n\n' : '') + `[Screenshot: ${att.filename ?? 'image'}]\n${extractedText}`;
+        }
       }
+
+      await supabase.from('feedback_attachments').insert({
+        feedback_id: feedbackId,
+        storage_path: storagePath,
+        extracted_text: extractedText,
+      });
     }
 
-    await supabase.from('feedback_attachments').insert({
-      feedback_id: feedbackId,
-      storage_path: storagePath,
-      extracted_text: extractedText,
-    });
-  }
-
-  if (ocrWorker) await ocrWorker.terminate();
-  const finalBody = bodyText || initialBody;
-  if (finalBody !== initialBody) {
-    await supabase.from('feedback').update({ body_text: finalBody }).eq('id', feedbackId);
+    const useFallback = timedOut || (wasProcessingPlaceholder && !bodyText);
+    const finalBody = useFallback ? OCR_FALLBACK_MESSAGE : bodyText || initialBody;
+    if (finalBody !== initialBody) {
+      await supabase.from('feedback').update({ body_text: finalBody }).eq('id', feedbackId);
+    }
+  } finally {
+    clearTimeout(timeoutId);
+    if (ocrWorker) await ocrWorker.terminate();
   }
 }
