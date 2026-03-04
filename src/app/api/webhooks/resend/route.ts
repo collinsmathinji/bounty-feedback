@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -185,16 +186,31 @@ export async function POST(request: NextRequest) {
 
   const emailId = event.data.email_id;
 
+  // Respond immediately so Resend doesn't timeout; OCR and DB work run in background
+  after(async () => {
+    try {
+      await processEmailReceived(emailId);
+    } catch (e) {
+      console.error('Resend webhook background processing error:', { emailId, error: e });
+    }
+  });
+
+  return NextResponse.json({ ok: true, processing: true });
+}
+
+async function processEmailReceived(emailId: string): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY not set');
+  }
+
   let email: { subject?: string | null; text?: string | null; html?: string | null };
   try {
     email = await getReceivedEmail(apiKey, emailId);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error('Resend get email error:', { emailId, message: msg });
-    return NextResponse.json(
-      { error: 'Failed to fetch email', detail: msg },
-      { status: 502 }
-    );
+    throw e;
   }
 
   const rawEmailBody = (email.text || stripHtml(email.html || '')).trim();
@@ -212,7 +228,6 @@ export async function POST(request: NextRequest) {
 
   const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
 
-  // A01.4: Accept email with only screenshots (no body) – build body from OCR
   let ocrWorker: OCRWorker | null = null;
   if (!bodyText && attachments.length > 0) {
     ocrWorker = await createOCRWorker();
@@ -237,10 +252,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!bodyText) {
-    return NextResponse.json(
-      { error: 'Email has no text content or image attachments to extract text from' },
-      { status: 400 }
-    );
+    throw new Error('Email has no text content or image attachments to extract text from');
   }
 
   const supabase = createAdminClient();
@@ -250,10 +262,7 @@ export async function POST(request: NextRequest) {
     orgId = orgs?.[0]?.id ?? null;
   }
   if (!orgId) {
-    return NextResponse.json(
-      { error: 'No organization (set RESEND_FEEDBACK_ORGANIZATION_ID or create an org)' },
-      { status: 503 }
-    );
+    throw new Error('No organization (set RESEND_FEEDBACK_ORGANIZATION_ID or create an org)');
   }
 
   const suggested = suggestTags(bodyText);
@@ -288,10 +297,7 @@ export async function POST(request: NextRequest) {
 
   if (feedbackErr || !feedback) {
     console.error('Feedback insert error:', feedbackErr);
-    return NextResponse.json(
-      { error: feedbackErr?.message ?? 'Failed to create feedback' },
-      { status: 500 }
-    );
+    throw new Error(feedbackErr?.message ?? 'Failed to create feedback');
   }
 
   if (customerEmail) {
@@ -357,8 +363,7 @@ export async function POST(request: NextRequest) {
       .eq('id', feedback.id);
   }
 
-  return NextResponse.json({
-    ok: true,
+  console.log('Resend webhook processed:', {
     feedback_id: feedback.id,
     customer_email: customerEmail,
     attachments_processed: attachments.length,
