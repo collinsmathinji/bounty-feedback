@@ -41,19 +41,36 @@ async function runOCR(buffer: Buffer, contentType: string): Promise<string | nul
   }
 }
 
+const RECEIVING_FETCH_RETRIES = 3;
+const RECEIVING_FETCH_DELAY_MS = 2000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function getReceivedEmail(apiKey: string, emailId: string) {
-  const res = await fetch(`${RESEND_API_BASE}/emails/receiving/${emailId}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || `Resend API ${res.status}`);
+  let lastStatus = 0;
+  let lastBody = '';
+  for (let attempt = 1; attempt <= RECEIVING_FETCH_RETRIES; attempt++) {
+    const res = await fetch(`${RESEND_API_BASE}/emails/receiving/${emailId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    lastStatus = res.status;
+    lastBody = await res.text();
+    if (res.ok) {
+      return JSON.parse(lastBody) as {
+        subject?: string | null;
+        text?: string | null;
+        html?: string | null;
+      };
+    }
+    const retryable = res.status === 404 || (res.status >= 500 && res.status < 600);
+    if (!retryable || attempt === RECEIVING_FETCH_RETRIES) {
+      throw new Error(lastBody || `Resend API ${res.status}`);
+    }
+    await sleep(RECEIVING_FETCH_DELAY_MS * attempt);
   }
-  return res.json() as Promise<{
-    subject?: string | null;
-    text?: string | null;
-    html?: string | null;
-  }>;
+  throw new Error(lastBody || `Resend API ${lastStatus}`);
 }
 
 async function listReceivedAttachments(apiKey: string, emailId: string) {
@@ -123,8 +140,12 @@ export async function POST(request: NextRequest) {
   try {
     email = await getReceivedEmail(apiKey, emailId);
   } catch (e) {
-    console.error('Resend get email error:', e);
-    return NextResponse.json({ error: 'Failed to fetch email' }, { status: 502 });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('Resend get email error:', { emailId, message: msg });
+    return NextResponse.json(
+      { error: 'Failed to fetch email', detail: msg },
+      { status: 502 }
+    );
   }
 
   let bodyText = (email.text || stripHtml(email.html || '')).trim();

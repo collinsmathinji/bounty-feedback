@@ -68,7 +68,7 @@ export async function ensureUserOrganization(): Promise<{ organizationId: string
   }
 
   // Ensure this user is an active member of the Vamo organization (admin bypasses RLS).
-  // Upsert so we don't fail if they already exist (e.g. race).
+  // Upsert so we don't fail if they already exist (e.g. pending invite or race).
   const { error: memberErr } = await admin
     .from('organization_members')
     .upsert(
