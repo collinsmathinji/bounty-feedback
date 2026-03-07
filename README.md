@@ -7,7 +7,7 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
 - **Feedback ingestion**: Add feedback manually (paste text or attach screenshots; OCR extracts text from images). Optionally assign to a customer email; unassigned feedback is tagged for manual assignment.
 - **Auto-tagging**: Feedback is tagged by topic (UI, Bug, Search Bar, Search Results, Filter, Sequences, Inbox, Integrations) and sentiment (Positive/Negative). Tags can be edited in the dashboard.
 - **Filtering**: Filter by customer, one or more tags, date range, status, and urgency score (1–5). All filters can be combined.
-- **Summaries**: Generate feedback summaries for a date range and filters. Top requested actions are prioritized by mention count; export to PDF or CSV.
+- **Summaries**: Generate descriptive AI feedback summaries for a date range and filters. Summaries include **Critical themes** (description, mentions, sentiment, priority), **Additional observations**, and **Recommended actions**; export to PDF or CSV.
 
 ## Tech stack
 
@@ -76,7 +76,10 @@ Inbound emails are ingested via **Resend** (API key + webhook). When an email is
 
 1. **Resend setup**: Sign up at [resend.com](https://resend.com), add an **inbound domain** (e.g. `feedback.farmtrackai.com` or use Resend’s default `*.resend.app`), create an **API key** (`RESEND_API_KEY`), and in **Webhooks** create a webhook with URL `https://farmtrackai.com/api/webhooks/resend` (or your app host) and event **email.received**. Copy the **Signing secret** as `RESEND_WEBHOOK_SECRET`.
 2. **Env**: Also set `SUPABASE_SERVICE_ROLE_KEY`. Optional: `RESEND_FEEDBACK_ORGANIZATION_ID` (org UUID for inbound feedback).
-3. **Behaviour**: Subject is parsed for a customer email (or feedback is Unassigned). Body becomes feedback text (auto-tagged). Image attachments are uploaded and OCR'd; text is appended to the feedback.
+3. **Behaviour**:
+   - **Customer**: Put the customer email in the **Subject** line (e.g. subject `user@example.com`) or in the body on its own line as `Customer: user@example.com`. If neither is present, feedback is Unassigned.
+   - **Tags**: In the body, add a line starting with `Tags:` followed by comma-separated tag names, e.g. `Tags: UI, bug, negative`. These tags are applied to the feedback; unknown tag names are created. If no `Tags:` line is present, feedback is auto-tagged from content.
+   - Body text (after stripping `Customer:` and `Tags:` lines) is stored as feedback and auto-tagged when no explicit tags are given. Image attachments are uploaded and OCR'd; extracted text is appended to the feedback.
 
 The dashboard "New Feedback" form also supports manual entry and screenshot upload with OCR.
 

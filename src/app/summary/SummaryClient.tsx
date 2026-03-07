@@ -22,8 +22,15 @@ export function SummaryClient({
   const [summary, setSummary] = useState<{
     totalFeedback: number;
     topTags: [string, number][];
-    topRequestedActions: { text: string; mentions: number }[];
-    otherTrends: string;
+    criticalThemes: Array<{
+      title: string;
+      description: string;
+      mentions: number;
+      sentiment: string;
+      priority: string;
+    }>;
+    additionalObservations: string;
+    recommendedActions: string[];
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,10 +68,15 @@ export function SummaryClient({
       ['Feedback Summary', format(new Date(), 'yyyy-MM-dd')],
       ['Total feedback in range', summary.totalFeedback],
       [],
-      ['Top requested actions'],
-      ...summary.topRequestedActions.map((a) => [a.text, `${a.mentions} mentions`]),
+      ['Critical Themes'],
+      ...summary.criticalThemes.flatMap((t) => [
+        [t.title, t.description, `${t.mentions} mentions`, t.sentiment, t.priority],
+      ]),
       [],
-      ['Other trends', summary.otherTrends],
+      ['Additional Observations', summary.additionalObservations],
+      [],
+      ['Recommended Actions'],
+      ...summary.recommendedActions.map((a) => [a]),
     ];
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -105,15 +117,23 @@ export function SummaryClient({
     addText(`Date range: ${dateRange}`, 11);
     addText(`Total feedback: ${summary.totalFeedback}`, 11);
     y += 6;
-    addText('Top requested actions', 12, true);
+    addText('Critical Themes', 12, true);
     y += 2;
-    for (const a of summary.topRequestedActions) {
-      addText(`• ${a.text} (${a.mentions} mention${a.mentions !== 1 ? 's' : ''})`, 10);
+    for (const t of summary.criticalThemes) {
+      addText(`${t.title} (${t.mentions} mention${t.mentions !== 1 ? 's' : ''}, ${t.sentiment}, ${t.priority})`, 10);
+      addText(t.description, 9);
+      y += 2;
     }
-    y += 6;
-    addText('Other feedback trends', 12, true);
+    y += 4;
+    addText('Additional Observations', 12, true);
     y += 2;
-    addText(summary.otherTrends, 10);
+    addText(summary.additionalObservations, 10);
+    y += 6;
+    addText('Recommended Actions', 12, true);
+    y += 2;
+    for (const a of summary.recommendedActions) {
+      addText(`• ${a}`, 10);
+    }
     y += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -198,27 +218,44 @@ export function SummaryClient({
           </div>
           {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
           {summary && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <h2 className="text-lg font-semibold text-slate-800">
                 AI Feedback Summary: {dateLabel}
               </h2>
               <p className="text-slate-600">
                 Total feedback in range: <strong>{summary.totalFeedback}</strong>
               </p>
-              <div>
-                <h3 className="font-medium text-slate-800 mb-2">Top requested actions</h3>
-                <ul className="list-disc list-inside space-y-1 text-slate-700">
-                  {summary.topRequestedActions.map((a, i) => (
-                    <li key={i}>
-                      {a.text} ({a.mentions} mention{a.mentions !== 1 ? 's' : ''})
+
+              <section>
+                <h3 className="font-semibold text-slate-800 mb-3">Critical Themes</h3>
+                <ul className="space-y-4">
+                  {summary.criticalThemes.map((theme, i) => (
+                    <li key={i} className="border border-slate-200 rounded-lg p-4 bg-slate-50/50">
+                      <div className="font-medium text-slate-800">{theme.title}</div>
+                      <p className="text-slate-600 text-sm mt-1">{theme.description}</p>
+                      <div className="flex flex-wrap gap-2 mt-2 text-xs">
+                        <span className="text-slate-500">Mentions: {theme.mentions} customer{theme.mentions !== 1 ? 's' : ''}</span>
+                        <span className="text-slate-500">Sentiment: {theme.sentiment}</span>
+                        <span className="text-slate-500">Priority: {theme.priority}</span>
+                      </div>
                     </li>
                   ))}
                 </ul>
-              </div>
-              <div>
-                <h3 className="font-medium text-slate-800 mb-2">Other feedback trends</h3>
-                <p className="text-slate-600">{summary.otherTrends}</p>
-              </div>
+              </section>
+
+              <section>
+                <h3 className="font-semibold text-slate-800 mb-2">Additional Observations</h3>
+                <p className="text-slate-600">{summary.additionalObservations}</p>
+              </section>
+
+              <section>
+                <h3 className="font-semibold text-slate-800 mb-2">Recommended Actions</h3>
+                <ul className="list-disc list-inside space-y-1 text-slate-700">
+                  {summary.recommendedActions.map((a, i) => (
+                    <li key={i}>{a}</li>
+                  ))}
+                </ul>
+              </section>
             </div>
           )}
           {!summary && !loading && (

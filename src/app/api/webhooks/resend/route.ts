@@ -46,6 +46,36 @@ function extractCustomerFromSubject(subject: string | null): string | null {
   return null;
 }
 
+/** Extract customer email from body line like "Customer: user@example.com" or "Customer:user@example.com". */
+function extractCustomerFromBody(body: string): string | null {
+  if (!body?.trim()) return null;
+  const line = body.split(/\r?\n/).find((l) => /^\s*Customer\s*:\s*/i.test(l.trim()));
+  if (!line) return null;
+  const afterLabel = line.replace(/^\s*Customer\s*:\s*/i, '').trim();
+  const match = afterLabel.match(EMAIL_REGEX);
+  return match ? match[0].toLowerCase() : null;
+}
+
+/** Parse "Tags: UI, bug, negative" (or "Tags:UI,bug,negative") from body. Returns tag names; line is stripped from body later. */
+function parseTagsFromBody(body: string): string[] {
+  if (!body?.trim()) return [];
+  const line = body.split(/\r?\n/).find((l) => /^\s*Tags\s*:\s*/i.test(l.trim()));
+  if (!line) return [];
+  const afterLabel = line.replace(/^\s*Tags\s*:\s*/i, '').trim();
+  return afterLabel.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+}
+
+/** Remove lines that are Customer: or Tags: metadata so stored body_text is clean. */
+function stripMetadataLines(body: string): string {
+  if (!body?.trim()) return body;
+  return body
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*Customer\s*:\s*/i.test(l.trim()) && !/^\s*Tags\s*:\s*/i.test(l.trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 interface OCRWorker {
   recognize(image: Buffer): Promise<{ data?: { text?: string } }>;
   terminate(): Promise<unknown>;
@@ -215,7 +245,14 @@ export async function POST(request: NextRequest) {
   const rawEmailBody = (email.text || stripHtml(email.html || '')).trim();
   let bodyText = stripImagePlaceholders(rawEmailBody);
 
-  const customerEmail = extractCustomerFromSubject(email.subject ?? null);
+  // Customer: from subject (e.g. subject = "user@example.com") or from body ("Customer: user@example.com")
+  const customerEmail =
+    extractCustomerFromSubject(email.subject ?? null) ?? extractCustomerFromBody(bodyText);
+
+  // Tags: from body (e.g. "Tags: UI, bug, negative"); strip metadata so stored body is clean
+  const explicitTagNames = parseTagsFromBody(bodyText);
+  bodyText = stripMetadataLines(bodyText);
+
   const subject = (email.subject ?? '').trim() || null;
 
   let attachments: Array<{ id: string; filename?: string; content_type?: string; download_url?: string }> = [];
@@ -249,21 +286,54 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const suggested = suggestTags(bodyText);
-  const { data: tagRows } = await supabase
-    .from('tags')
-    .select('id, name, slug')
-    .in('name', [...suggested, 'Unassigned']);
-  const tagMap = new Map((tagRows ?? []).map((t) => [t.name.toLowerCase(), t]));
-
   const tagIds: string[] = [];
-  for (const name of suggested) {
-    const t = tagMap.get(name.toLowerCase());
-    if (t) tagIds.push(t.id);
-  }
-  if (!customerEmail) {
-    const unassigned = (tagRows ?? []).find((t) => t.slug === UNASSIGNED_TAG_SLUG);
-    if (unassigned) tagIds.push(unassigned.id);
+  if (explicitTagNames.length > 0) {
+    for (const name of explicitTagNames) {
+      const trimmed = name.trim();
+      if (!trimmed) continue;
+      const slug = trimmed.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'tag';
+      const { data: byName } = await supabase
+        .from('tags')
+        .select('id')
+        .ilike('name', trimmed)
+        .limit(1)
+        .maybeSingle();
+      if (byName) {
+        tagIds.push(byName.id);
+        continue;
+      }
+      const { data: bySlug } = await supabase
+        .from('tags')
+        .select('id')
+        .eq('slug', slug)
+        .limit(1)
+        .maybeSingle();
+      if (bySlug) {
+        tagIds.push(bySlug.id);
+        continue;
+      }
+      const { data: inserted } = await supabase
+        .from('tags')
+        .insert({ name: trimmed, slug })
+        .select('id')
+        .single();
+      if (inserted) tagIds.push(inserted.id);
+    }
+  } else {
+    const suggested = suggestTags(bodyText);
+    const { data: tagRows } = await supabase
+      .from('tags')
+      .select('id, name, slug')
+      .in('name', [...suggested, 'Unassigned']);
+    const tagMap = new Map((tagRows ?? []).map((t) => [t.name.toLowerCase(), t]));
+    for (const name of suggested) {
+      const t = tagMap.get(name.toLowerCase());
+      if (t) tagIds.push(t.id);
+    }
+    if (!customerEmail) {
+      const unassigned = (tagRows ?? []).find((t) => t.slug === UNASSIGNED_TAG_SLUG);
+      if (unassigned) tagIds.push(unassigned.id);
+    }
   }
 
   const { data: feedback, error: feedbackErr } = await supabase

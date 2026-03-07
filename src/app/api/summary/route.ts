@@ -82,8 +82,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         totalFeedback: 0,
         topTags: [],
-        topRequestedActions: [],
-        otherTrends: 'No feedback in the selected range.',
+        criticalThemes: [],
+        additionalObservations: 'No feedback in the selected range.',
+        recommendedActions: [],
       });
     }
     query = query.in('id', feedbackIds);
@@ -104,8 +105,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       totalFeedback: 0,
       topTags: [],
-      topRequestedActions: [],
-      otherTrends: 'No feedback in the selected range.',
+      criticalThemes: [],
+      additionalObservations: 'No feedback in the selected range.',
+      recommendedActions: [],
     });
   }
 
@@ -117,10 +119,18 @@ export async function POST(request: NextRequest) {
     .join('\n\n');
 
   const openai = new OpenAI({ apiKey });
-  const systemPrompt = `You are an assistant that summarizes customer feedback. Given a list of feedback items, respond with a JSON object only (no markdown, no code block), with these exact keys:
+  const systemPrompt = `You are an assistant that produces a detailed, descriptive product feedback summary. Given a list of feedback items, respond with a JSON object only (no markdown, no code block), with these exact keys:
+
 - "totalFeedback": number (count of items; use the number provided).
-- "topRequestedActions": array of { "text": string (short action request, e.g. "Add dark mode"), "mentions": number (how many feedback items mentioned this) }. List 3–7 top requested actions, ordered by mentions descending.
-- "otherTrends": string (one short paragraph describing other themes, sentiment, or trends).`;
+- "criticalThemes": array of objects, each with:
+  - "title": string (short theme name, e.g. "User Interface (UI) Improvements")
+  - "description": string (2–3 sentences describing what customers said and why it matters)
+  - "mentions": number (how many feedback items or customers mentioned this)
+  - "sentiment": string (one of: "Positive", "Negative", "Mixed", "Neutral")
+  - "priority": string (one of: "High", "Medium", "Low")
+  List 3–8 critical themes, ordered by priority (High first) and mentions descending. Be specific and descriptive.
+- "additionalObservations": string (paragraph covering: test/noise feedback, edge cases, or other notable patterns that don't fit as critical themes).
+- "recommendedActions": array of strings (concrete, actionable recommendations; 3–6 items). Each should be a clear next step (e.g. "Prioritize redesigning the user interface to address specific concerns raised.").`;
 
   const userPrompt = `Total feedback items: ${totalFeedback}\n\nFeedback:\n${feedbackBlob}\n\nReturn the JSON summary.`;
 
@@ -141,23 +151,34 @@ export async function POST(request: NextRequest) {
 
     const parsed = JSON.parse(content) as {
       totalFeedback?: number;
-      topRequestedActions?: { text: string; mentions: number }[];
-      otherTrends?: string;
+      criticalThemes?: Array<{
+        title: string;
+        description: string;
+        mentions: number;
+        sentiment: string;
+        priority: string;
+      }>;
+      additionalObservations?: string;
+      recommendedActions?: string[];
     };
 
-    const topRequestedActions = Array.isArray(parsed.topRequestedActions)
-      ? parsed.topRequestedActions.slice(0, 10)
+    const criticalThemes = Array.isArray(parsed.criticalThemes)
+      ? parsed.criticalThemes.slice(0, 10)
       : [];
-    const otherTrends =
-      typeof parsed.otherTrends === 'string'
-        ? parsed.otherTrends
-        : 'No additional trends identified.';
+    const additionalObservations =
+      typeof parsed.additionalObservations === 'string'
+        ? parsed.additionalObservations
+        : 'No additional observations.';
+    const recommendedActions = Array.isArray(parsed.recommendedActions)
+      ? parsed.recommendedActions.slice(0, 10)
+      : [];
 
     return NextResponse.json({
       totalFeedback: typeof parsed.totalFeedback === 'number' ? parsed.totalFeedback : totalFeedback,
-      topTags: [], // SummaryClient doesn't require this for display; could be derived from tags if needed
-      topRequestedActions,
-      otherTrends,
+      topTags: [],
+      criticalThemes,
+      additionalObservations,
+      recommendedActions,
     });
   } catch (e) {
     console.error('Summary generation error:', e);
