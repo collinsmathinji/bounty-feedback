@@ -1,7 +1,9 @@
 /**
  * Auto-tag feedback from body text (A02).
- * Uses keyword matching and simple sentiment; can be extended with AI later.
+ * Uses keyword matching and simple sentiment; LLM suggestion when OPENAI_API_KEY is set.
  */
+
+import OpenAI from 'openai';
 
 const TAG_KEYWORDS: Record<string, string[]> = {
   'UI': ['ui', 'interface', 'design', 'layout', 'button', 'click', 'screen', 'page', 'look', 'appearance', 'consistent', 'consistency'],
@@ -37,4 +39,63 @@ export function suggestTags(bodyText: string): string[] {
   }
 
   return Array.from(tags);
+}
+
+/**
+ * Suggest tags using an LLM (OpenAI) from email subject + body.
+ * Only returns tag names that exist in availableTagNames.
+ * Returns null if OPENAI_API_KEY is missing or the LLM call fails (caller should fall back to suggestTags).
+ */
+export async function suggestTagsWithLLM(
+  subject: string | null,
+  bodyText: string,
+  availableTagNames: string[]
+): Promise<string[] | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || availableTagNames.length === 0) return null;
+
+  const text = [subject, bodyText].filter(Boolean).join('\n\n');
+  if (!text.trim()) return null;
+
+  const openai = new OpenAI({ apiKey });
+  const tagList = availableTagNames.join(', ');
+
+  const systemPrompt = `You are an assistant that tags customer feedback. You must respond with a JSON object only (no markdown, no code block) with a single key "tags" whose value is an array of tag names.
+
+Rules:
+- Only use tag names from this exact list: ${tagList}
+- Pick all tags that reasonably apply to the feedback (subject + body). Be inclusive but relevant.
+- Return tag names exactly as they appear in the list (case-sensitive).
+- If no tags fit, return an empty array: {"tags":[]}
+- Do not invent or paraphrase tag names.`;
+
+  const userPrompt = `Feedback to tag:\n\nSubject: ${subject ?? '(none)'}\n\nBody:\n${bodyText.slice(0, 4000)}\n\nReturn JSON with key "tags" (array of tag names from the list).`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = completion.choices[0]?.message?.content?.trim();
+    if (!content) return null;
+
+    const parsed = JSON.parse(content) as { tags?: unknown };
+    const raw = parsed.tags;
+    if (!Array.isArray(raw)) return null;
+
+    const allowedSet = new Set(availableTagNames);
+    const suggested = raw
+      .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+      .map((s) => s.trim())
+      .filter((name) => allowedSet.has(name));
+    return [...new Set(suggested)];
+  } catch (e) {
+    console.error('LLM auto-tag error:', e instanceof Error ? e.message : e);
+    return null;
+  }
 }

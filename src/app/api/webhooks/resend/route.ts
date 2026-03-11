@@ -2,7 +2,7 @@ import { after } from 'next/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { suggestTags } from '@/lib/auto-tag';
+import { suggestTags, suggestTagsWithLLM } from '@/lib/auto-tag';
 import {
   FEEDBACK_PROCESSING_PLACEHOLDER as PROCESSING_PLACEHOLDER,
   OCR_FALLBACK_MESSAGE,
@@ -56,16 +56,19 @@ function extractCustomerFromBody(body: string): string | null {
   return match ? match[0].toLowerCase() : null;
 }
 
-/** Parse "Tags: UI, bug, negative" (or "Tags:UI,bug,negative") from body. Returns tag names; line is stripped from body later. */
-function parseTagsFromBody(body: string): string[] {
-  if (!body?.trim()) return [];
-  const line = body.split(/\r?\n/).find((l) => /^\s*Tags\s*:\s*/i.test(l.trim()));
-  if (!line) return [];
-  const afterLabel = line.replace(/^\s*Tags\s*:\s*/i, '').trim();
-  return afterLabel.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+/** Extract email from Resend "from" field: "Name <user@example.com>" or plain "user@example.com". */
+function extractEmailFromFrom(from: string | null | undefined): string | null {
+  if (!from?.trim()) return null;
+  const trimmed = from.trim();
+  const angle = trimmed.match(/<([^>]+)>/);
+  if (angle) {
+    const addr = angle[1].trim();
+    return EMAIL_REGEX.test(addr) ? addr.toLowerCase() : null;
+  }
+  return EMAIL_REGEX.test(trimmed) ? trimmed.toLowerCase() : null;
 }
 
-/** Remove lines that are Customer: or Tags: metadata so stored body_text is clean. */
+/** Remove Customer: and Tags: metadata lines so stored body_text is clean (tags come from LLM only). */
 function stripMetadataLines(body: string): string {
   if (!body?.trim()) return body;
   return body
@@ -123,6 +126,7 @@ async function getReceivedEmail(apiKey: string, emailId: string) {
         subject?: string | null;
         text?: string | null;
         html?: string | null;
+        from?: string | null;
       };
     }
     const retryable = res.status === 404 || (res.status >= 500 && res.status < 600);
@@ -230,7 +234,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Do feedback creation in the request so it always completes; only OCR/attachments in background (Vercel kills after 60s)
-  let email: { subject?: string | null; text?: string | null; html?: string | null };
+  let email: { subject?: string | null; text?: string | null; html?: string | null; from?: string | null };
   try {
     email = await getReceivedEmail(apiKey, emailId);
   } catch (e) {
@@ -245,12 +249,12 @@ export async function POST(request: NextRequest) {
   const rawEmailBody = (email.text || stripHtml(email.html || '')).trim();
   let bodyText = stripImagePlaceholders(rawEmailBody);
 
-  // Customer: from subject (e.g. subject = "user@example.com") or from body ("Customer: user@example.com")
+  // Customer: body "Customer: ..." > subject > sender (from). Sender is used so most feedback is auto-assigned.
   const customerEmail =
-    extractCustomerFromSubject(email.subject ?? null) ?? extractCustomerFromBody(bodyText);
+    extractCustomerFromBody(bodyText) ??
+    extractCustomerFromSubject(email.subject ?? null) ??
+    extractEmailFromFrom(email.from);
 
-  // Tags: from body (e.g. "Tags: UI, bug, negative"); strip metadata so stored body is clean
-  const explicitTagNames = parseTagsFromBody(bodyText);
   bodyText = stripMetadataLines(bodyText);
 
   const subject = (email.subject ?? '').trim() || null;
@@ -286,54 +290,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // All emails are tagged via LLM only (no explicit Tags: in body). Fall back to keyword-based if LLM unavailable.
   const tagIds: string[] = [];
-  if (explicitTagNames.length > 0) {
-    for (const name of explicitTagNames) {
-      const trimmed = name.trim();
-      if (!trimmed) continue;
-      const slug = trimmed.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'tag';
-      const { data: byName } = await supabase
-        .from('tags')
-        .select('id')
-        .ilike('name', trimmed)
-        .limit(1)
-        .maybeSingle();
-      if (byName) {
-        tagIds.push(byName.id);
-        continue;
-      }
-      const { data: bySlug } = await supabase
-        .from('tags')
-        .select('id')
-        .eq('slug', slug)
-        .limit(1)
-        .maybeSingle();
-      if (bySlug) {
-        tagIds.push(bySlug.id);
-        continue;
-      }
-      const { data: inserted } = await supabase
-        .from('tags')
-        .insert({ name: trimmed, slug })
-        .select('id')
-        .single();
-      if (inserted) tagIds.push(inserted.id);
-    }
-  } else {
-    const suggested = suggestTags(bodyText);
-    const { data: tagRows } = await supabase
-      .from('tags')
-      .select('id, name, slug')
-      .in('name', [...suggested, 'Unassigned']);
-    const tagMap = new Map((tagRows ?? []).map((t) => [t.name.toLowerCase(), t]));
-    for (const name of suggested) {
-      const t = tagMap.get(name.toLowerCase());
-      if (t) tagIds.push(t.id);
-    }
-    if (!customerEmail) {
-      const unassigned = (tagRows ?? []).find((t) => t.slug === UNASSIGNED_TAG_SLUG);
-      if (unassigned) tagIds.push(unassigned.id);
-    }
+  const { data: allTagRows } = await supabase.from('tags').select('id, name, slug');
+  const tagRows = allTagRows ?? [];
+  const allTagNames = tagRows
+    .filter((t) => t.slug !== UNASSIGNED_TAG_SLUG)
+    .map((t) => t.name);
+  let suggested: string[] =
+    (await suggestTagsWithLLM(subject, bodyText, allTagNames)) ?? [];
+  if (suggested.length === 0) {
+    suggested = suggestTags(bodyText);
+  }
+  const tagMap = new Map(tagRows.map((t) => [t.name.toLowerCase(), t]));
+  for (const name of suggested) {
+    const t = tagMap.get(name.toLowerCase());
+    if (t) tagIds.push(t.id);
+  }
+  if (!customerEmail) {
+    const unassigned = tagRows.find((t) => t.slug === UNASSIGNED_TAG_SLUG);
+    if (unassigned) tagIds.push(unassigned.id);
   }
 
   const { data: feedback, error: feedbackErr } = await supabase
