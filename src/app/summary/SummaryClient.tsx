@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { FiltersSidebar, getDefaultFilters, type FilterState } from '@/components/FiltersSidebar';
+import { FiltersSidebar, type FilterState } from '@/components/FiltersSidebar';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 

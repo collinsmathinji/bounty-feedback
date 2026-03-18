@@ -9,7 +9,9 @@ const VAMO_DOMAIN = '@vamo.app';
  * Ensure the current user has a profile and is a member of the single Vamo organization.
  * Only @vamo.app emails are allowed; signup is restricted to that domain and this grants access to the one org.
  */
-export async function ensureUserOrganization(): Promise<{ organizationId: string } | { error: string }> {
+export async function ensureUserOrganization(): Promise<
+  { organizationId: string; role: 'admin' | 'manager' } | { error: string }
+> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -22,7 +24,7 @@ export async function ensureUserOrganization(): Promise<{ organizationId: string
   let admin;
   try {
     admin = createAdminClient();
-  } catch (e) {
+  } catch {
     return { error: 'Server configuration error (missing service role key).' };
   }
 
@@ -68,21 +70,38 @@ export async function ensureUserOrganization(): Promise<{ organizationId: string
   }
 
   // Ensure this user is an active member of the Vamo organization (admin bypasses RLS).
-  // Upsert so we don't fail if they already exist (e.g. pending invite or race).
+  // Roles: first member in org = admin; everyone else = manager. DB constraint: role IN ('admin', 'manager').
+  const { data: existingMember } = await admin
+    .from('organization_members')
+    .select('role')
+    .eq('organization_id', organizationId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  let role: 'admin' | 'manager' = 'manager';
+  if (!existingMember) {
+    const { count } = await admin
+      .from('organization_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', organizationId);
+    if ((count ?? 0) === 0) role = 'admin';
+  } else {
+    role = existingMember.role === 'admin' ? 'admin' : 'manager';
+  }
+
+  const memberPayload = {
+    organization_id: organizationId,
+    user_id: user.id,
+    role,
+    status: 'active' as const,
+  };
+
   const { error: memberErr } = await admin
     .from('organization_members')
-    .upsert(
-      {
-        organization_id: organizationId,
-        user_id: user.id,
-        role: 'admin',
-        status: 'active',
-      },
-      {
-        onConflict: 'organization_id, user_id',
-        ignoreDuplicates: false,
-      }
-    );
+    .upsert(memberPayload, {
+      onConflict: 'organization_id, user_id',
+      ignoreDuplicates: false,
+    });
 
   if (memberErr) {
     return { error: memberErr.message };
@@ -91,5 +110,5 @@ export async function ensureUserOrganization(): Promise<{ organizationId: string
   if (!organizationId) {
     return { error: 'Organization ID could not be resolved' };
   }
-  return { organizationId };
+  return { organizationId, role };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -13,13 +13,15 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  useEffect(() => {
+  const queryError = useMemo(() => {
     const err = searchParams.get('error');
-    if (err === 'vamo-only') {
-      setError('Access restricted to @vamo.app addresses only.');
-    } else if (err === 'session') {
-      setError('We couldn’t add you to the team yet. Please sign in again.');
+    const message = searchParams.get('message');
+    if (err === 'vamo-only') return 'Access restricted to @vamo.app addresses only.';
+    if (err === 'session') {
+      const detail = message ? ` ${decodeURIComponent(message)}` : '';
+      return `We couldn't add you to the team yet. Please sign in again.${detail}`;
     }
+    return null;
   }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -69,7 +71,7 @@ function LoginForm() {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {(error || queryError) && <p className="text-sm text-red-600">{error || queryError}</p>}
           <button
             type="submit"
             disabled={loading}
@@ -89,7 +91,7 @@ function LoginForm() {
           </button>
         </form>
         <p className="mt-4 text-sm text-slate-500 text-center">
-          Don't have an account? <Link href="/signup" className="text-blue-600 hover:underline">Sign up</Link>
+          Don&apos;t have an account? <Link href="/signup" className="text-blue-600 hover:underline">Sign up</Link>
         </p>
       </div>
     </div>

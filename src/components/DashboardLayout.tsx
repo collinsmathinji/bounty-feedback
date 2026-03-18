@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
-const nav = [
+const baseNav = [
   { href: '/dashboard', label: 'Feedback' },
   { href: '/summary', label: 'Feedback Summary' },
 ];
@@ -22,13 +22,20 @@ function SpinnerIcon({ className }: { className?: string }) {
 
 export default function DashboardLayout({
   children,
+  userRole = 'manager',
 }: {
   children: React.ReactNode;
+  userRole?: 'admin' | 'manager';
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+
+  const nav =
+    userRole === 'admin'
+      ? [...baseNav, { href: '/dashboard/team', label: 'Team' }]
+      : baseNav;
 
   async function signOut() {
     if (signingOut) return;
@@ -46,11 +53,11 @@ export default function DashboardLayout({
   const sidebar = (
     <aside className="w-64 shrink-0 border-r border-slate-200 bg-[var(--sidebar-bg)] flex flex-col shadow-[var(--shadow-sm)] h-full">
       <div className="p-5 border-b border-slate-200">
-        <h2 className="font-semibold text-slate-900 tracking-tight">Feedback Dashboard</h2>
+        <h2 className="font-semibold text-slate-900 tracking-tight">Customer Feedback</h2>
         <p className="text-xs text-slate-500 mt-0.5">Vamo</p>
       </div>
       <nav className="p-3 flex-1">
-        {nav.map(({ href, label }) => (
+        {nav.map(({ href, label }: { href: string; label: string }) => (
           <Link
             key={href}
             href={href}
@@ -115,7 +122,7 @@ export default function DashboardLayout({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <span className="font-semibold text-slate-900">Feedback Dashboard</span>
+          <span className="font-semibold text-slate-900">Customer Feedback</span>
         </div>
         {children}
       </div>

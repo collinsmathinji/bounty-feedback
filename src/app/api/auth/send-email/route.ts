@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
         email_data.redirect_to ?? '',
         email_data.site_url ?? ''
       );
-      const { subject, html, text } = getEmailContent('email_change', verifyUrlCurrent);
+      const { html, text } = getEmailContent('email_change', verifyUrlCurrent);
       const { error } = await resend.emails.send({
         from: fromAddress,
         to: [currentEmail],

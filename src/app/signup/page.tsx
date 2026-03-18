@@ -6,6 +6,17 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
 const VAMO_DOMAIN = '@vamo.app';
+const PASSWORD_RULES =
+  'At least 8 characters, with uppercase, lowercase, number, and a special character.';
+
+function isStrongPassword(pw: string): boolean {
+  if (pw.length < 8) return false;
+  const hasLower = /[a-z]/.test(pw);
+  const hasUpper = /[A-Z]/.test(pw);
+  const hasNumber = /[0-9]/.test(pw);
+  const hasSpecial = /[^A-Za-z0-9]/.test(pw);
+  return hasLower && hasUpper && hasNumber && hasSpecial;
+}
 
 function EyeIcon({ show }: { show: boolean }) {
   if (show) {
@@ -41,17 +52,22 @@ export default function SignupPage() {
       setError(`Only ${VAMO_DOMAIN} email addresses can create an account.`);
       return;
     }
+    if (!isStrongPassword(password)) {
+      setError(`Password is not strong enough. ${PASSWORD_RULES}`);
+      return;
+    }
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
     }
     setLoading(true);
     const supabase = createClient();
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
     const { data, error: err } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/dashboard`,
+        emailRedirectTo: `${baseUrl}/auth/callback?next=/dashboard`,
       },
     });
     setLoading(false);
@@ -99,7 +115,7 @@ export default function SignupPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
                 className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               <button
@@ -112,6 +128,7 @@ export default function SignupPage() {
                 <EyeIcon show={!showPassword} />
               </button>
             </div>
+            <p className="mt-1 text-xs text-slate-500">{PASSWORD_RULES}</p>
           </div>
           <div>
             <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-1">
@@ -124,7 +141,7 @@ export default function SignupPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
                 className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               <button

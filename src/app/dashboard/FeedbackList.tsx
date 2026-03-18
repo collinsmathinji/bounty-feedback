@@ -2,6 +2,7 @@
 
 type Tag = { id: string; name: string; slug: string };
 type Customer = { id: string; email: string; display_name: string | null };
+type Member = { user_id: string; email: string; full_name: string | null };
 type Item = {
   id: string;
   customer_email: string | null;
@@ -10,17 +11,20 @@ type Item = {
   status: string;
   urgency_score: number | null;
   created_at: string;
+  assigned_to?: string | null;
   tags?: Tag[];
 };
 
 export function FeedbackList({
   feedback,
   customers,
+  members,
   onSelect,
   formatDate,
 }: {
   feedback: Item[];
   customers: Customer[];
+  members: Member[];
   onSelect: (id: string) => void;
   formatDate: (d: string) => string;
 }) {
@@ -28,6 +32,11 @@ export function FeedbackList({
     if (!email) return 'Unassigned';
     const c = customers.find((x) => x.email === email);
     return c?.display_name || email;
+  }
+  function displayAssignee(userId: string | null | undefined) {
+    if (!userId) return '—';
+    const m = members.find((x) => x.user_id === userId);
+    return m ? (m.full_name || m.email) : '—';
   }
 
   return (
@@ -49,6 +58,9 @@ export function FeedbackList({
             </th>
             <th className="text-left py-3 sm:py-3.5 px-3 sm:px-5 font-semibold text-slate-600 uppercase tracking-wider text-xs hidden lg:table-cell">
               Tags
+            </th>
+            <th className="text-left py-3 sm:py-3.5 px-3 sm:px-5 font-semibold text-slate-600 uppercase tracking-wider text-xs hidden md:table-cell">
+              Assigned to
             </th>
             <th className="text-left py-3 sm:py-3.5 px-3 sm:px-5 font-semibold text-slate-600 uppercase tracking-wider text-xs">
               Date
@@ -88,6 +100,9 @@ export function FeedbackList({
                     <span className="text-slate-400 text-xs">—</span>
                   )}
                 </div>
+              </td>
+              <td className="py-3 sm:py-4 px-3 sm:px-5 hidden md:table-cell text-slate-600 max-w-[120px] truncate">
+                {displayAssignee(f.assigned_to)}
               </td>
               <td className="py-3 sm:py-4 px-3 sm:px-5 text-slate-500 text-xs tabular-nums whitespace-nowrap">
                 {formatDate(f.created_at)}

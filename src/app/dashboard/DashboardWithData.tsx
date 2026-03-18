@@ -1,13 +1,15 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { FiltersSidebar, getDefaultFilters, type FilterState } from '@/components/FiltersSidebar';
+import { FiltersSidebar, type FilterState } from '@/components/FiltersSidebar';
 import { FeedbackList } from './FeedbackList';
 import { FeedbackDetailModal } from './FeedbackDetailModal';
 import { format } from 'date-fns';
 
 type Tag = { id: string; name: string; slug: string };
 type Customer = { id: string; email: string; display_name: string | null };
+type Department = { id: string; name: string };
+export type Member = { user_id: string; email: string; full_name: string | null };
 export type FeedbackItem = {
   id: string;
   customer_email: string | null;
@@ -16,19 +18,28 @@ export type FeedbackItem = {
   status: string;
   urgency_score: number | null;
   created_at: string;
+  department_id?: string | null;
+  resolved_at?: string | null;
+  assigned_to?: string | null;
   tags?: Tag[];
 };
 
 export function DashboardWithData({
   initialCustomers,
   initialTags,
+  initialDepartments,
+  initialMembers,
   initialFeedback,
   defaultFilters,
+  userRole,
 }: {
   initialCustomers: Customer[];
   initialTags: Tag[];
+  initialDepartments: Department[];
+  initialMembers: Member[];
   initialFeedback: FeedbackItem[];
   defaultFilters: FilterState;
+  userRole: 'admin' | 'manager';
 }) {
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -152,6 +163,7 @@ export function DashboardWithData({
               <FeedbackList
                 feedback={filtered}
                 customers={initialCustomers}
+                members={initialMembers}
                 onSelect={setSelectedId}
                 formatDate={(d) => format(new Date(d), 'MMM d, yyyy')}
               />
@@ -167,6 +179,9 @@ export function DashboardWithData({
           feedback={selected}
           tags={initialTags}
           customers={initialCustomers}
+          departments={initialDepartments}
+          members={initialMembers}
+          userRole={userRole}
           onClose={() => setSelectedId(null)}
           onUpdate={handleFeedbackUpdated}
         />

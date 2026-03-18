@@ -17,8 +17,13 @@ export default async function DashboardRootLayout({
 
   const orgResult = await ensureUserOrganization();
   if ('error' in orgResult) {
-    redirect('/login?error=session');
+    const message = encodeURIComponent(orgResult.error);
+    redirect(`/login?error=session&message=${message}`);
   }
 
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <DashboardLayout userRole={orgResult.role}>
+      {children}
+    </DashboardLayout>
+  );
 }

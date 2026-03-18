@@ -8,6 +8,7 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
 - **Auto-tagging**: Feedback is tagged by topic (UI, Bug, Search Bar, Search Results, Filter, Sequences, Inbox, Integrations) and sentiment (Positive/Negative). Tags can be edited in the dashboard.
 - **Filtering**: Filter by customer, one or more tags, date range, status, and urgency score (1–5). All filters can be combined.
 - **Summaries**: Generate descriptive AI feedback summaries for a date range and filters. Summaries include **Critical themes** (description, mentions, sentiment, priority), **Additional observations**, and **Recommended actions**; export to PDF or CSV.
+- **Roles**: **Admin** (oversee everything, manage team and roles) and **Manager** (handle feedback, assign to departments, communicate with customers). See [Users and roles](#users-and-roles) below.
 
 ## Tech stack
 
@@ -31,6 +32,7 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
    - In **SQL Editor**, run the migrations in order:
      - `supabase/migrations/20240304000000_initial_schema.sql`
      - `supabase/migrations/20240304000001_profiles.sql`
+     - (and any later migrations in that folder, e.g. `20240304000004_departments_roles_messages.sql` for departments, roles, and customer messages)
    - Create the **Storage** bucket `attachments` (public) if not created by the first migration; add RLS policies so authenticated users can read/write objects under their organization path.
 
 3. **Auth**
@@ -59,8 +61,11 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
 
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (required for adding new users to the team on signup/login; get it from Supabase **Settings → API**)
    - `RESEND_API_KEY` (for SMTP password in Supabase and for inbound webhook)
-   - **Production only:** `NEXT_PUBLIC_APP_URL` to your app URL (e.g. `https://your-domain.com`) so verification emails link to your site instead of localhost. Add this URL (and `https://your-domain.com/**`) to Supabase **Authentication → URL Configuration → Redirect URLs**.
+   - **Production only:** `NEXT_PUBLIC_APP_URL` to your app URL (e.g. `https://your-domain.com`) so verification emails link to your site instead of localhost. In Supabase **Authentication → URL Configuration → Redirect URLs**, add:
+     - `http://localhost:3000/auth/callback` (dev)
+     - `https://your-domain.com/auth/callback` (production)
 
 6. **Run**
 
@@ -69,6 +74,13 @@ A centralized dashboard to collect, tag, filter, and summarize customer feedback
    ```
 
    Open [http://localhost:3000](http://localhost:3000). Sign up with a `@vamo.app` email to create your org and start adding feedback.
+
+## Users and roles
+
+- **Creating users**: New users sign up at **/signup** using a **@vamo.app** email address. Only that domain is allowed.
+- **First user** in the organization becomes **Admin**; every subsequent sign-up is added as **Manager**.
+- **Changing roles**: Admins can open **Team** in the sidebar (Dashboard → Team), see all organization members, and change any member’s role between **Admin** and **Manager**.
+- **Admin**: Full access; can manage the team and change roles. **Manager**: Can manage feedback, assign complaints to departments, and send customer updates; cannot manage team or roles.
 
 ## Email ingestion with use of Resend
 

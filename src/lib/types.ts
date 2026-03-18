@@ -46,7 +46,7 @@ export interface OrganizationMember {
   id: string;
   organization_id: string;
   user_id: string;
-  role: 'admin' | 'member';
+  role: 'admin' | 'manager';
   status: 'active' | 'pending';
   invited_by: string | null;
   invited_at: string | null;

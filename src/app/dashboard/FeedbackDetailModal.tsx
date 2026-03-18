@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { FEEDBACK_STATUS_LABELS, type FeedbackStatus } from '@/lib/types';
 import {
@@ -10,6 +11,14 @@ import {
 
 type Tag = { id: string; name: string; slug: string };
 type Customer = { id: string; email: string; display_name: string | null };
+type Department = { id: string; name: string };
+type Member = { user_id: string; email: string; full_name: string | null };
+type CustomerMessageRow = {
+  id: string;
+  body: string;
+  created_at: string;
+  sent_via: string;
+};
 type FeedbackItem = {
   id: string;
   customer_email: string | null;
@@ -18,6 +27,9 @@ type FeedbackItem = {
   status: string;
   urgency_score: number | null;
   created_at: string;
+  department_id?: string | null;
+  resolved_at?: string | null;
+  assigned_to?: string | null;
   tags?: Tag[];
 };
 
@@ -25,12 +37,18 @@ export function FeedbackDetailModal({
   feedback,
   tags: allTags,
   customers,
+  departments,
+  members,
+  userRole,
   onClose,
   onUpdate,
 }: {
   feedback: FeedbackItem;
   tags: Tag[];
   customers: Customer[];
+  departments: Department[];
+  members: Member[];
+  userRole: 'admin' | 'manager';
   onClose: () => void;
   onUpdate: (updated: FeedbackItem) => void;
 }) {
@@ -39,17 +57,24 @@ export function FeedbackDetailModal({
   const [urgencyScore, setUrgencyScore] = useState<number | ''>(
     feedback.urgency_score ?? ''
   );
+  const [departmentId, setDepartmentId] = useState<string>(feedback.department_id ?? '');
+  const [assignedTo, setAssignedTo] = useState<string>(feedback.assigned_to ?? '');
   const [tagIds, setTagIds] = useState<string[]>(
     feedback.tags?.map((t) => t.id) ?? []
   );
   const [attachments, setAttachments] = useState<{ url: string; extracted_text: string | null }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [messages, setMessages] = useState<CustomerMessageRow[]>([]);
   const supabase = createClient();
 
   useEffect(() => {
     setCustomerEmail(feedback.customer_email ?? '');
     setStatus(feedback.status);
     setUrgencyScore(feedback.urgency_score ?? '');
+    setDepartmentId(feedback.department_id ?? '');
+    setAssignedTo(feedback.assigned_to ?? '');
     setTagIds(feedback.tags?.map((t) => t.id) ?? []);
   }, [feedback]);
 
@@ -76,6 +101,20 @@ export function FeedbackDetailModal({
     loadAttachments();
   }, [feedback.id]);
 
+  useEffect(() => {
+    async function loadMessages() {
+      const client = createClient();
+      const { data } = await client
+        .from('customer_messages')
+        .select('id, body, created_at, sent_via')
+        .eq('feedback_id', feedback.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setMessages((data as CustomerMessageRow[] | null) ?? []);
+    }
+    loadMessages();
+  }, [feedback.id]);
+
   async function handleSave() {
     setSaving(true);
     const uScore = urgencyScore === '' ? null : Number(urgencyScore);
@@ -85,6 +124,8 @@ export function FeedbackDetailModal({
         customer_email: customerEmail || null,
         status,
         urgency_score: uScore,
+        department_id: departmentId || null,
+        assigned_to: assignedTo || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', feedback.id);
@@ -107,9 +148,41 @@ export function FeedbackDetailModal({
       customer_email: customerEmail || null,
       status,
       urgency_score: uScore,
+      department_id: departmentId || null,
+      assigned_to: assignedTo || null,
       tags: allTags.filter((t) => tagIds.includes(t.id)),
     });
     onClose();
+  }
+
+  async function sendCustomerUpdate(markResolved: boolean) {
+    const text = messageText.trim();
+    if (!text) return;
+    setSendingMessage(true);
+    try {
+      const res = await fetch('/api/customer-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          feedbackId: feedback.id,
+          body: text,
+          sendEmail: true,
+          markResolved,
+        }),
+      });
+      if (!res.ok) return;
+      setMessageText('');
+      const client = createClient();
+      const { data } = await client
+        .from('customer_messages')
+        .select('id, body, created_at, sent_via')
+        .eq('feedback_id', feedback.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setMessages((data as CustomerMessageRow[] | null) ?? []);
+    } finally {
+      setSendingMessage(false);
+    }
   }
 
   function toggleTag(id: string) {
@@ -152,7 +225,13 @@ export function FeedbackDetailModal({
               onChange={(e) => setCustomerEmail(e.target.value)}
               placeholder="customer@example.com"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+              list="customer-email-suggestions"
             />
+            <datalist id="customer-email-suggestions">
+              {customers.map((c) => (
+                <option key={c.id} value={c.email} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -172,11 +251,15 @@ export function FeedbackDetailModal({
               <div className="space-y-2">
                 {attachments.map((a, i) => (
                   <div key={i} className="border border-slate-200 rounded-lg overflow-hidden">
-                    <img
-                      src={a.url}
-                      alt={`Attachment ${i + 1}`}
-                      className="max-h-48 w-full object-contain bg-slate-100"
-                    />
+                    <div className="relative w-full bg-slate-100" style={{ height: 192 }}>
+                      <Image
+                        src={a.url}
+                        alt={`Attachment ${i + 1}`}
+                        fill
+                        className="object-contain"
+                        sizes="(max-width: 768px) 100vw, 768px"
+                      />
+                    </div>
                     {a.extracted_text && (
                       <p className="p-2 text-xs text-slate-600 bg-slate-50 border-t">
                         Extracted text: {a.extracted_text.slice(0, 200)}
@@ -242,6 +325,107 @@ export function FeedbackDetailModal({
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="flex gap-4 flex-wrap">
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Department
+              </label>
+              <select
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+              >
+                <option value="">Unassigned</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Assigned to
+              </label>
+              <select
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+              >
+                <option value="">Unassigned</option>
+                {members.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.full_name || m.email || m.user_id}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Push this issue to a team member.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Customer communication
+            </label>
+            <div className="border border-slate-200 rounded-lg bg-white overflow-hidden">
+              <div className="p-3 space-y-2 bg-slate-50 border-b">
+                <textarea
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  rows={3}
+                  placeholder="Write an update to the customer…"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                />
+                <div className="flex flex-wrap gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => sendCustomerUpdate(false)}
+                    disabled={sendingMessage || !messageText.trim()}
+                    className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-sm"
+                  >
+                    {sendingMessage ? 'Sending…' : 'Send update'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sendCustomerUpdate(true)}
+                    disabled={sendingMessage || !messageText.trim()}
+                    className="px-3 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] disabled:opacity-50 text-sm"
+                  >
+                    {sendingMessage ? 'Sending…' : 'Send + mark resolved'}
+                  </button>
+                </div>
+                {!feedback.customer_email && (
+                  <p className="text-xs text-slate-500">
+                    No customer email is set; the update will be saved here but cannot be emailed.
+                  </p>
+                )}
+              </div>
+              <div className="p-3 space-y-2">
+                {messages.length === 0 ? (
+                  <p className="text-sm text-slate-500">No messages yet.</p>
+                ) : (
+                  messages.map((m) => (
+                    <div key={m.id} className="text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-900 font-medium">
+                          Update
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {new Date(m.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-slate-700 whitespace-pre-wrap">{m.body}</p>
+                      <p className="mt-1 text-xs text-slate-500">Sent via: {m.sent_via}</p>
+                      <div className="h-px bg-slate-100 my-3" />
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
