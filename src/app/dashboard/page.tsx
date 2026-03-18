@@ -2,7 +2,10 @@ import { createClient } from '@/lib/supabase/server';
 import { ensureUserOrganization } from '@/app/actions/auth';
 import { DashboardWithData, type FeedbackItem } from './DashboardWithData';
 
-type FeedbackTagJoin = { tags: { id: string; name: string; slug: string } | null };
+type FeedbackTagJoin = {
+  tag_id?: unknown;
+  tags: { id: string; name: string; slug: string } | { id: string; name: string; slug: string }[] | null;
+};
 type FeedbackRowWithTags = Omit<FeedbackItem, 'tags'> & {
   feedback_tags: FeedbackTagJoin[] | null;
 };
@@ -78,7 +81,11 @@ export default async function DashboardPage() {
     resolved_at: f.resolved_at ?? null,
     assigned_to: (f as { assigned_to?: string | null }).assigned_to ?? null,
     tags: (f.feedback_tags ?? [])
-      .map((ft) => ft.tags)
+      .flatMap((ft) => {
+        const t = ft.tags;
+        if (!t) return [];
+        return Array.isArray(t) ? t : [t];
+      })
       .filter((t): t is { id: string; name: string; slug: string } => Boolean(t)),
   }));
 
