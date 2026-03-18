@@ -20,6 +20,24 @@ export default async function DashboardPage() {
   const orgId = result.organizationId;
   const userRole = result.role;
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const currentUserId = user?.id ?? null;
+
+  const isMemberPortal = userRole === 'member';
+
+  const feedbackQuery = supabase
+    .from('feedback')
+    .select(`
+        id, customer_email, subject, body_text, status, urgency_score, created_at, department_id, resolved_at, assigned_to,
+        feedback_tags ( tag_id, tags ( id, name, slug ) )
+      `)
+    .eq('organization_id', orgId)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (isMemberPortal && currentUserId) {
+    feedbackQuery.eq('assigned_to', currentUserId);
+  }
 
   const [customersRes, tagsRes, departmentsRes, membersRes, feedbackRes] = await Promise.all([
     supabase.from('customers').select('id, email, display_name').eq('organization_id', orgId).order('email'),
@@ -30,15 +48,7 @@ export default async function DashboardPage() {
       .select('user_id')
       .eq('organization_id', orgId)
       .eq('status', 'active'),
-    supabase
-      .from('feedback')
-      .select(`
-        id, customer_email, subject, body_text, status, urgency_score, created_at, department_id, resolved_at, assigned_to,
-        feedback_tags ( tag_id, tags ( id, name, slug ) )
-      `)
-      .eq('organization_id', orgId)
-      .order('created_at', { ascending: false })
-      .limit(200),
+    feedbackQuery,
   ]);
 
   const customersFromTable = customersRes.data ?? [];
@@ -109,6 +119,7 @@ export default async function DashboardPage() {
       initialFeedback={feedbackRows}
       defaultFilters={defaultFilters}
       userRole={userRole}
+      isMemberPortal={isMemberPortal}
     />
   );
 }

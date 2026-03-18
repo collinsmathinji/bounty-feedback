@@ -10,7 +10,7 @@ const VAMO_DOMAIN = '@vamo.app';
  * Only @vamo.app emails are allowed; signup is restricted to that domain and this grants access to the one org.
  */
 export async function ensureUserOrganization(): Promise<
-  { organizationId: string; role: 'admin' | 'manager' } | { error: string }
+  { organizationId: string; role: 'admin' | 'manager' | 'member' } | { error: string }
 > {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -78,7 +78,7 @@ export async function ensureUserOrganization(): Promise<
     .eq('user_id', user.id)
     .maybeSingle();
 
-  let role: 'admin' | 'manager' = 'manager';
+  let role: 'admin' | 'manager' | 'member' = 'manager';
   if (!existingMember) {
     const { count } = await admin
       .from('organization_members')
@@ -86,7 +86,7 @@ export async function ensureUserOrganization(): Promise<
       .eq('organization_id', organizationId);
     if ((count ?? 0) === 0) role = 'admin';
   } else {
-    role = existingMember.role === 'admin' ? 'admin' : 'manager';
+    role = existingMember.role as 'admin' | 'manager' | 'member';
   }
 
   const memberPayload = {

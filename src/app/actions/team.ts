@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server';
  */
 export async function updateMemberRole(
   memberId: string,
-  newRole: 'admin' | 'manager'
+  newRole: 'admin' | 'manager' | 'member'
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase

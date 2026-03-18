@@ -40,6 +40,7 @@ export function FeedbackDetailModal({
   departments,
   members,
   userRole,
+  readOnly = false,
   onClose,
   onUpdate,
 }: {
@@ -48,7 +49,8 @@ export function FeedbackDetailModal({
   customers: Customer[];
   departments: Department[];
   members: Member[];
-  userRole: 'admin' | 'manager';
+  userRole: 'admin' | 'manager' | 'member';
+  readOnly?: boolean;
   onClose: () => void;
   onUpdate: (updated: FeedbackItem) => void;
 }) {
@@ -219,19 +221,27 @@ export function FeedbackDetailModal({
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Customer Email
             </label>
-            <input
-              type="email"
-              value={customerEmail}
-              onChange={(e) => setCustomerEmail(e.target.value)}
-              placeholder="customer@example.com"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              list="customer-email-suggestions"
-            />
-            <datalist id="customer-email-suggestions">
-              {customers.map((c) => (
-                <option key={c.id} value={c.email} />
-              ))}
-            </datalist>
+            {readOnly ? (
+              <p className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700">
+                {customerEmail || '—'}
+              </p>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  placeholder="customer@example.com"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  list="customer-email-suggestions"
+                />
+                <datalist id="customer-email-suggestions">
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.email} />
+                  ))}
+                </datalist>
+              </>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -276,21 +286,34 @@ export function FeedbackDetailModal({
               Tags
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {allTags.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => toggleTag(t.id)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${
-                    tagIds.includes(t.id)
-                      ? 'bg-blue-100 border-blue-300 text-blue-800'
-                      : 'bg-slate-100 border-slate-200 text-slate-600'
-                  }`}
-                >
-                  {t.name}
-                  {tagIds.includes(t.id) ? ' ×' : ''}
-                </button>
-              ))}
+              {readOnly
+                ? (feedback.tags?.length ? (
+                    feedback.tags.map((t) => (
+                      <span
+                        key={t.id}
+                        className="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-slate-100 border border-slate-200 text-slate-600"
+                      >
+                        {t.name}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-500 text-sm">—</span>
+                  ))
+                : allTags.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => toggleTag(t.id)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border ${
+                        tagIds.includes(t.id)
+                          ? 'bg-blue-100 border-blue-300 text-blue-800'
+                          : 'bg-slate-100 border-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {t.name}
+                      {tagIds.includes(t.id) ? ' ×' : ''}
+                    </button>
+                  ))}
             </div>
           </div>
           <div className="flex gap-4">
@@ -298,33 +321,47 @@ export function FeedbackDetailModal({
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Urgency Score
               </label>
-              <span className="text-slate-800 font-medium">
-                {urgencyScore === '' ? '—' : `${urgencyScore}/5`}
-              </span>
-              <input
-                type="range"
-                min={1}
-                max={5}
-                value={urgencyScore === '' ? 3 : urgencyScore}
-                onChange={(e) => setUrgencyScore(Number(e.target.value))}
-                className="block w-32 mt-1"
-              />
+              {readOnly ? (
+                <p className="text-slate-800 font-medium">
+                  {urgencyScore === '' ? '—' : `${urgencyScore}/5`}
+                </p>
+              ) : (
+                <>
+                  <span className="text-slate-800 font-medium">
+                    {urgencyScore === '' ? '—' : `${urgencyScore}/5`}
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={5}
+                    value={urgencyScore === '' ? 3 : urgencyScore}
+                    onChange={(e) => setUrgencyScore(Number(e.target.value))}
+                    className="block w-32 mt-1"
+                  />
+                </>
+              )}
             </div>
             <div className="flex-1">
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Status
               </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              >
-                {statusOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              {readOnly ? (
+                <p className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700">
+                  {statusOptions.find((o) => o.value === status)?.label ?? status}
+                </p>
+              ) : (
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                >
+                  {statusOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -333,38 +370,52 @@ export function FeedbackDetailModal({
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Department
               </label>
-              <select
-                value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              >
-                <option value="">Unassigned</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+              {readOnly ? (
+                <p className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700">
+                  {departmentId ? departments.find((d) => d.id === departmentId)?.name : '—'}
+                </p>
+              ) : (
+                <select
+                  value={departmentId}
+                  onChange={(e) => setDepartmentId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                >
+                  <option value="">Unassigned</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             <div className="flex-1 min-w-[180px]">
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Assigned to
               </label>
-              <select
-                value={assignedTo}
-                onChange={(e) => setAssignedTo(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {m.full_name || m.email || m.user_id}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-500">
-                Push this issue to a team member.
-              </p>
+              {readOnly ? (
+                <p className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-700">
+                  {assignedTo ? members.find((m) => m.user_id === assignedTo)?.full_name || members.find((m) => m.user_id === assignedTo)?.email : '—'}
+                </p>
+              ) : (
+                <>
+                  <select
+                    value={assignedTo}
+                    onChange={(e) => setAssignedTo(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  >
+                    <option value="">Unassigned</option>
+                    {members.map((m) => (
+                      <option key={m.user_id} value={m.user_id}>
+                        {m.full_name || m.email || m.user_id}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Push this issue to a team member.
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -373,38 +424,40 @@ export function FeedbackDetailModal({
               Customer communication
             </label>
             <div className="border border-slate-200 rounded-lg bg-white overflow-hidden">
-              <div className="p-3 space-y-2 bg-slate-50 border-b">
-                <textarea
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  rows={3}
-                  placeholder="Write an update to the customer…"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
-                />
-                <div className="flex flex-wrap gap-2 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => sendCustomerUpdate(false)}
-                    disabled={sendingMessage || !messageText.trim()}
-                    className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-sm"
-                  >
-                    {sendingMessage ? 'Sending…' : 'Send update'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => sendCustomerUpdate(true)}
-                    disabled={sendingMessage || !messageText.trim()}
-                    className="px-3 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] disabled:opacity-50 text-sm"
-                  >
-                    {sendingMessage ? 'Sending…' : 'Send + mark resolved'}
-                  </button>
+              {!readOnly && (
+                <div className="p-3 space-y-2 bg-slate-50 border-b">
+                  <textarea
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    rows={3}
+                    placeholder="Write an update to the customer…"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                  />
+                  <div className="flex flex-wrap gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => sendCustomerUpdate(false)}
+                      disabled={sendingMessage || !messageText.trim()}
+                      className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-sm"
+                    >
+                      {sendingMessage ? 'Sending…' : 'Send update'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sendCustomerUpdate(true)}
+                      disabled={sendingMessage || !messageText.trim()}
+                      className="px-3 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] disabled:opacity-50 text-sm"
+                    >
+                      {sendingMessage ? 'Sending…' : 'Send + mark resolved'}
+                    </button>
+                  </div>
+                  {!feedback.customer_email && (
+                    <p className="text-xs text-slate-500">
+                      No customer email is set; the update will be saved here but cannot be emailed.
+                    </p>
+                  )}
                 </div>
-                {!feedback.customer_email && (
-                  <p className="text-xs text-slate-500">
-                    No customer email is set; the update will be saved here but cannot be emailed.
-                  </p>
-                )}
-              </div>
+              )}
               <div className="p-3 space-y-2">
                 {messages.length === 0 ? (
                   <p className="text-sm text-slate-500">No messages yet.</p>
@@ -430,21 +483,33 @@ export function FeedbackDetailModal({
           </div>
         </div>
         <div className="px-6 py-4 border-t border-[var(--border)] flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          {readOnly ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]"
+            >
+              Close
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

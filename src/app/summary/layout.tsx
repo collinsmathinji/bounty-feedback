@@ -12,6 +12,8 @@ export default async function SummaryLayout({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
   if (!user.email?.toLowerCase().endsWith('@vamo.app')) redirect('/login?error=vamo-only');
-  await ensureUserOrganization();
-  return <DashboardLayout>{children}</DashboardLayout>;
+  const orgResult = await ensureUserOrganization();
+  if ('error' in orgResult) redirect('/login');
+  if (orgResult.role === 'member') redirect('/dashboard');
+  return <DashboardLayout userRole={orgResult.role}>{children}</DashboardLayout>;
 }

@@ -9,7 +9,7 @@ type Row = {
   user_id: string;
   email: string;
   full_name: string | null;
-  role: 'admin' | 'manager';
+  role: 'admin' | 'manager' | 'member';
   status: string;
 };
 
@@ -19,7 +19,7 @@ export function TeamMembersTable({ initialRows }: { initialRows: Row[] }) {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleRoleChange(memberId: string, newRole: 'admin' | 'manager') {
+  async function handleRoleChange(memberId: string, newRole: 'admin' | 'manager' | 'member') {
     setUpdatingId(memberId);
     setError(null);
     const result = await updateMemberRole(memberId, newRole);
@@ -58,12 +58,13 @@ export function TeamMembersTable({ initialRows }: { initialRows: Row[] }) {
               <td className="px-4 py-3">
                 <select
                   value={row.role}
-                  onChange={(e) => handleRoleChange(row.id, e.target.value as 'admin' | 'manager')}
+                  onChange={(e) => handleRoleChange(row.id, e.target.value as 'admin' | 'manager' | 'member')}
                   disabled={updatingId === row.id}
                   className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white disabled:opacity-50"
                 >
                   <option value="admin">Admin</option>
                   <option value="manager">Manager</option>
+                  <option value="member">Member</option>
                 </select>
                 {updatingId === row.id && (
                   <span className="ml-2 text-xs text-slate-500">Saving…</span>

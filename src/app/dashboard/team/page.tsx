@@ -43,7 +43,7 @@ export default async function TeamPage() {
     user_id: m.user_id,
     email: profileMap.get(m.user_id)?.email ?? '(no email)',
     full_name: profileMap.get(m.user_id)?.full_name ?? null,
-    role: m.role as 'admin' | 'manager',
+    role: m.role as 'admin' | 'manager' | 'member',
     status: m.status,
   }));
 

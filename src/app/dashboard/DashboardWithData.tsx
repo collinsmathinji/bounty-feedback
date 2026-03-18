@@ -32,6 +32,7 @@ export function DashboardWithData({
   initialFeedback,
   defaultFilters,
   userRole,
+  isMemberPortal = false,
 }: {
   initialCustomers: Customer[];
   initialTags: Tag[];
@@ -39,7 +40,8 @@ export function DashboardWithData({
   initialMembers: Member[];
   initialFeedback: FeedbackItem[];
   defaultFilters: FilterState;
-  userRole: 'admin' | 'manager';
+  userRole: 'admin' | 'manager' | 'member';
+  isMemberPortal?: boolean;
 }) {
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -47,6 +49,7 @@ export function DashboardWithData({
   const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>(initialFeedback);
 
   const filtered = useMemo(() => {
+    if (isMemberPortal) return feedbackList;
     let list = feedbackList;
     const from = filters.dateFrom ? new Date(filters.dateFrom) : null;
     const to = filters.dateTo ? new Date(filters.dateTo) : null;
@@ -71,7 +74,7 @@ export function DashboardWithData({
         (f) => f.urgency_score != null && filters.urgencyScores.includes(f.urgency_score)
       );
     return list;
-  }, [feedbackList, filters, initialCustomers]);
+  }, [feedbackList, filters, initialCustomers, isMemberPortal]);
 
   const selected = selectedId ? feedbackList.find((f) => f.id === selectedId) : null;
 
@@ -90,71 +93,75 @@ export function DashboardWithData({
   return (
     <>
       <div className="flex flex-1 min-h-0 min-w-0">
-        {/* Filters: sidebar on lg+, drawer on smaller */}
-        <div className="hidden lg:block lg:shrink-0">
-          <FiltersSidebar
-            filters={filters}
-            onFiltersChange={setFilters}
-            customers={initialCustomers}
-            tags={initialTags}
-          />
-        </div>
-
-        {/* Filters drawer for mobile/tablet */}
-        {filtersDrawerOpen && (
+        {/* Filters: only for admins */}
+        {!isMemberPortal && (
           <>
-            <div
-              className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-              onClick={() => setFiltersDrawerOpen(false)}
-              aria-hidden
-            />
-            <div className="fixed inset-y-0 left-0 z-50 w-[min(320px,85vw)] max-w-full bg-white shadow-xl overflow-y-auto lg:hidden">
-              <div className="flex items-center justify-between p-4 border-b border-slate-200">
-                <h2 className="font-semibold text-slate-900">Filters</h2>
-                <button
-                  type="button"
-                  onClick={() => setFiltersDrawerOpen(false)}
-                  className="p-2 rounded-lg text-slate-600 hover:bg-slate-100"
-                  aria-label="Close filters"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="p-4">
-                <FiltersSidebar
-                  filters={filters}
-                  onFiltersChange={setFilters}
-                  customers={initialCustomers}
-                  tags={initialTags}
-                  embedded
-                />
-              </div>
+            <div className="hidden lg:block lg:shrink-0">
+              <FiltersSidebar
+                filters={filters}
+                onFiltersChange={setFilters}
+                customers={initialCustomers}
+                tags={initialTags}
+              />
             </div>
+            {filtersDrawerOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+                  onClick={() => setFiltersDrawerOpen(false)}
+                  aria-hidden
+                />
+                <div className="fixed inset-y-0 left-0 z-50 w-[min(320px,85vw)] max-w-full bg-white shadow-xl overflow-y-auto lg:hidden">
+                  <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                    <h2 className="font-semibold text-slate-900">Filters</h2>
+                    <button
+                      type="button"
+                      onClick={() => setFiltersDrawerOpen(false)}
+                      className="p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+                      aria-label="Close filters"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="p-4">
+                    <FiltersSidebar
+                      filters={filters}
+                      onFiltersChange={setFilters}
+                      customers={initialCustomers}
+                      tags={initialTags}
+                      embedded
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
 
         <div className="flex-1 flex flex-col min-w-0">
           <header className="flex flex-wrap items-center gap-3 justify-between px-4 sm:px-6 lg:px-8 py-4 sm:py-5 bg-white border-b border-slate-200 shrink-0 shadow-[var(--shadow-sm)]">
             <div className="flex items-center gap-3 min-w-0">
-              <button
-                type="button"
-                onClick={() => setFiltersDrawerOpen(true)}
-                className="lg:hidden flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50"
-              >
-                <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3 7.586V4z" />
-                </svg>
-                Filters
-                {activeFilterCount > 0 && (
-                  <span className="bg-blue-500 text-white text-xs font-medium rounded-full w-5 h-5 flex items-center justify-center">
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
+              {!isMemberPortal && (
+                <button
+                  type="button"
+                  onClick={() => setFiltersDrawerOpen(true)}
+                  className="lg:hidden flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50"
+                >
+                  <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3 7.586V4z" />
+                  </svg>
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="bg-blue-500 text-white text-xs font-medium rounded-full w-5 h-5 flex items-center justify-center">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+              )}
               <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight truncate">
-                Customer Feedback
+                {isMemberPortal ? 'Feedback assigned to you' : 'Customer Feedback'}
               </h1>
             </div>
           </header>
@@ -182,6 +189,7 @@ export function DashboardWithData({
           departments={initialDepartments}
           members={initialMembers}
           userRole={userRole}
+          readOnly={isMemberPortal}
           onClose={() => setSelectedId(null)}
           onUpdate={handleFeedbackUpdated}
         />

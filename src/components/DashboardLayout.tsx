@@ -6,10 +6,16 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
-const baseNav = [
+const adminNav = [
+  { href: '/dashboard', label: 'Feedback' },
+  { href: '/summary', label: 'Feedback Summary' },
+  { href: '/dashboard/team', label: 'Team' },
+];
+const managerNav = [
   { href: '/dashboard', label: 'Feedback' },
   { href: '/summary', label: 'Feedback Summary' },
 ];
+const memberNav = [{ href: '/dashboard', label: 'Feedback' }];
 
 function SpinnerIcon({ className }: { className?: string }) {
   return (
@@ -25,7 +31,7 @@ export default function DashboardLayout({
   userRole = 'manager',
 }: {
   children: React.ReactNode;
-  userRole?: 'admin' | 'manager';
+  userRole?: 'admin' | 'manager' | 'member';
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -34,8 +40,10 @@ export default function DashboardLayout({
 
   const nav =
     userRole === 'admin'
-      ? [...baseNav, { href: '/dashboard/team', label: 'Team' }]
-      : baseNav;
+      ? adminNav
+      : userRole === 'member'
+        ? memberNav
+        : managerNav;
 
   async function signOut() {
     if (signingOut) return;
