@@ -69,6 +69,8 @@ export function FeedbackDetailModal({
   const [sendingMessage, setSendingMessage] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [messages, setMessages] = useState<CustomerMessageRow[]>([]);
+  const [messageError, setMessageError] = useState<string | null>(null);
+  const [messageInfo, setMessageInfo] = useState<string | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -78,6 +80,8 @@ export function FeedbackDetailModal({
     setDepartmentId(feedback.department_id ?? '');
     setAssignedTo(feedback.assigned_to ?? '');
     setTagIds(feedback.tags?.map((t) => t.id) ?? []);
+    setMessageError(null);
+    setMessageInfo(null);
   }, [feedback]);
 
   useEffect(() => {
@@ -161,6 +165,8 @@ export function FeedbackDetailModal({
     const text = messageText.trim();
     if (!text) return;
     setSendingMessage(true);
+    setMessageError(null);
+    setMessageInfo(null);
     try {
       const res = await fetch('/api/customer-message', {
         method: 'POST',
@@ -168,12 +174,26 @@ export function FeedbackDetailModal({
         body: JSON.stringify({
           feedbackId: feedback.id,
           body: text,
-          sendEmail: true,
+          sendEmail: Boolean(customerEmail.trim()),
           markResolved,
+          customerEmail: customerEmail.trim() || null,
         }),
       });
-      if (!res.ok) return;
+      const payload = (await res.json().catch(() => null)) as
+        | { ok?: boolean; sent_via?: string; email_error?: string | null; error?: string }
+        | null;
+      if (!res.ok) {
+        setMessageError(payload?.error || 'Failed to send update.');
+        return;
+      }
       setMessageText('');
+      if (payload?.sent_via === 'email') {
+        setMessageInfo('Email sent to customer.');
+      } else if (payload?.email_error) {
+        setMessageInfo(`Saved update, but email failed: ${payload.email_error}`);
+      } else {
+        setMessageInfo('Saved update.');
+      }
       const client = createClient();
       const { data } = await client
         .from('customer_messages')
@@ -451,7 +471,13 @@ export function FeedbackDetailModal({
                       {sendingMessage ? 'Sending…' : 'Send + mark resolved'}
                     </button>
                   </div>
-                  {!feedback.customer_email && (
+                  {messageError && (
+                    <p className="text-xs text-red-600">{messageError}</p>
+                  )}
+                  {!messageError && messageInfo && (
+                    <p className="text-xs text-slate-600">{messageInfo}</p>
+                  )}
+                  {!customerEmail.trim() && (
                     <p className="text-xs text-slate-500">
                       No customer email is set; the update will be saved here but cannot be emailed.
                     </p>
