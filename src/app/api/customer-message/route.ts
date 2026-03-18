@@ -2,6 +2,29 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { Resend } from 'resend';
 
+function buildCustomerUpdateEmail(input: {
+  message: string;
+}): { subject: string; html: string; text: string } {
+  const subject = 'Customer Feedback Update';
+  const escaped = input.message
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1e293b;">
+  <h1 style="font-size:1.25rem;margin-bottom:16px;">Update</h1>
+  <p style="margin-bottom:16px;line-height:1.6;white-space:pre-wrap;">${escaped}</p>
+  <p style="margin-top:24px;font-size:0.875rem;color:#64748b;">Reply to this email if you need to follow up.</p>
+</body>
+</html>
+  `.trim();
+  const text = `Update\n\n${input.message}`;
+  return { subject, html, text };
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -66,15 +89,23 @@ export async function POST(request: Request) {
       );
     }
     const resend = new Resend(apiKey);
-    const from = process.env.RESEND_FROM || 'noreply@vamo.app';
+    // Match auth verification email sender configuration
+    const from = process.env.RESEND_AUTH_FROM ?? 'Customer Feedback Dashboard <onboarding@resend.dev>';
+    const { subject, html, text } = buildCustomerUpdateEmail({ message });
     try {
-      await resend.emails.send({
+      const { error } = await resend.emails.send({
         from,
-        to: feedback.customer_email,
-        subject: 'Customer Feedback Update',
-        text: message,
+        to: [feedback.customer_email],
+        subject,
+        html,
+        text,
       });
-      sentVia = 'email';
+      if (error) {
+        emailError = error.message || 'Email provider rejected the message.';
+        sentVia = 'manual';
+      } else {
+        sentVia = 'email';
+      }
     } catch (e) {
       emailError = e instanceof Error ? e.message : 'Failed to send email.';
       sentVia = 'manual';
