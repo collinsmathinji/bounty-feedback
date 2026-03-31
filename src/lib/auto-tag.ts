@@ -11,6 +11,7 @@ const TAG_KEYWORDS: Record<string, string[]> = {
   'Search Bar': ['search bar', 'search box', 'search field', 'search input', 'search bar is broken'],
   'Search Results': ['search results', 'search result', 'results page', 'search doesn\'t', 'search not'],
   'Filter': ['filter', 'filters', 'filtering', 'filter by', 'filter out'],
+  'Reports': ['report', 'reports', 'reporting', 'generate report', 'generate reports', 'generation of reports'],
   'Sequences': ['sequence', 'sequences', 'sequencing', 'sequence flow'],
   'Inbox': ['inbox', 'inbox is', 'inbox not', 'inbox problem'],
   'Integrations': ['integration', 'integrations', 'integrate', 'api', 'webhook', 'sync', 'connected'],
