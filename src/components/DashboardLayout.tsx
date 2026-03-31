@@ -9,11 +9,13 @@ import { useRouter } from 'next/navigation';
 const adminNav = [
   { href: '/dashboard', label: 'Feedback' },
   { href: '/summary', label: 'Feedback Summary' },
+  { href: '/dashboard/reports', label: 'Reports' },
   { href: '/dashboard/team', label: 'Team' },
 ];
 const managerNav = [
   { href: '/dashboard', label: 'Feedback' },
   { href: '/summary', label: 'Feedback Summary' },
+  { href: '/dashboard/reports', label: 'Reports' },
 ];
 const memberNav = [{ href: '/dashboard', label: 'Feedback' }];
 
